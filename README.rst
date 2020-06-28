@@ -39,9 +39,8 @@ Features
 Usage
 -------
 
-To create an agent that is compatible with gym loop you have to implement BaseAgent class from gym_loop
+To create an agent that is compatible with gym loop you have to implement BaseAgent class from gym_loop::
 
-.. codeblock:: python
         class BaseAgent:
         @staticmethod
         def get_default_parameters():
@@ -69,13 +68,14 @@ To create an agent that is compatible with gym loop you have to implement BaseAg
                 self.parameters = self.get_default_parameters()
                 self.parameters.update(params)
 
+Static method get_default_parameters returns parameters to add to yaml config,
+class consumes it then through self.parameters
 
-Static method get_default_parameters should return hyperparameters that you want to be tweakable through yaml configs.
-
-Lets say you have created your agetn in your home folder under the name my_agent.py (with class name MyAgent)
-All you have to do then is to generate default config with gym-loop util::
+Lets say you have created your agent in your home folder under the name my_agent.py
+(with class name MyAgent) All you have to do then is to generate default config with gym-loop util::
 
         gym-loop create-default --agent "~/my_agent.py:MyAgent" --run-config my-agent-default-run.yaml
+
 
 Alternatively you can package your agent (e.g. my_agents) and install it in your environment,
  then it's possible to run it like that::
@@ -89,7 +89,7 @@ This will output my-agent-default-run.yaml file that then can be used with::
       # or to run environment without memorize and update
       
       gym-loop evaluate -c my-agent-default-run.yaml
-        
+
 Credits
 -------
 
