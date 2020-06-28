@@ -2,36 +2,40 @@
 
 """Tests for `botbowl_bot` package."""
 
-import pytest
-
-from click.testing import CliRunner
-
 from botbowl_bot import botbowl_bot
-from botbowl_bot import cli
+from botbowl_bot.loops.default_loop import DefaultLoop
 
 
-@pytest.fixture
-def response():
-    """Sample pytest fixture.
+def test_generate_build():
+    default_loop = "botbowl_bot.loops.default_loop:DefaultLoop"
+    default_agent = "botbowl_bot.agents.random_agent:RandomAgent"
 
-    See more at: http://doc.pytest.org/en/latest/fixture.html
-    """
-    # import requests
-    # return requests.get('https://github.com/audreyr/cookiecutter-pypackage')
+    params = botbowl_bot.get_default_params(default_agent, default_loop)
 
+    botbowl_bot.train_agent(params)
 
-def test_content(response):
-    """Sample pytest test function with the pytest fixture as an argument."""
-    # from bs4 import BeautifulSoup
-    # assert 'GitHub' in BeautifulSoup(response.content).title.string
+    botbowl_bot.eval_agent(params)
 
 
-def test_command_line_interface():
-    """Test the CLI."""
-    runner = CliRunner()
-    result = runner.invoke(cli.main)
-    assert result.exit_code == 0
-    assert 'botbowl_bot.cli.main' in result.output
-    help_result = runner.invoke(cli.main, ['--help'])
-    assert help_result.exit_code == 0
-    assert '--help  Show this message and exit.' in help_result.output
+class TestClass:
+    @staticmethod
+    def check_is_class():
+        return "abcdefg"
+
+
+def test_module_str_to_class():
+    cls_type = botbowl_bot.module_str_to_class(__file__ + ":TestClass")
+    assert cls_type.check_is_class() == TestClass.check_is_class()
+
+    cls_type = botbowl_bot.module_str_to_class(
+        "botbowl_bot.loops.default_loop:DefaultLoop"
+    )
+    assert cls_type.get_default_parameters() == DefaultLoop.get_default_parameters()
+
+
+def test_validate_module_str():
+    assert botbowl_bot.validate_module_str("abc.abc:Class")
+    assert botbowl_bot.validate_module_str(__file__ + ":Class")
+    assert not botbowl_bot.validate_module_str("14abc.abc:Class")
+    assert not botbowl_bot.validate_module_str("abc.abc:14Class")
+    assert not botbowl_bot.validate_module_str("abc.abc:Cl###$ass")
