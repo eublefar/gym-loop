@@ -20,13 +20,13 @@ Gym Loop
 
 
 
-Ever got tired from copying same agent training loop for each of your RL gym agents? Gym Loop got you covered!
+Ever got tired from copying same agent training loop for each of your RL gym agents? 
+Gym Loop got you covered!
 Minimalistic framework for running experiments on Openai Gym environments. 
 
 
 * Free software: MIT license
 * Documentation: https://gym-loop.readthedocs.io.
-
 
 Features
 --------
@@ -69,16 +69,14 @@ To create an agent that is compatible with gym loop you have to implement BaseAg
                 self.parameters.update(params)
 
 Static method get_default_parameters returns parameters to add to yaml config,
-class consumes it then through self.parameters
-
+class consumes it then through self.parameters.
 Lets say you have created your agent in your home folder under the name my_agent.py
 (with class name MyAgent) All you have to do then is to generate default config with gym-loop util::
 
         gym-loop create-default --agent "~/my_agent.py:MyAgent" --run-config my-agent-default-run.yaml
 
-
-Alternatively you can package your agent (e.g. my_agents) and install it in your environment,
- then it's possible to run it like that::
+Alternatively you can package your agent (e.g. into my_agents package) 
+and install it in your environment, then it's possible to run it like that::
 
         gym-loop create-default --agent "my_agents.my_agent:MyAgent" --run-config my-agent-default-run.yaml
 
