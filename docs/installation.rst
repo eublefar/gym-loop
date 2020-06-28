@@ -12,7 +12,7 @@ To install BotBowl bot, run this command in your terminal:
 
 .. code-block:: console
 
-    $ pip install botbowl_bot
+    $ pip install gym-loop
 
 This is the preferred method to install BotBowl bot, as it will always install the most recent stable release.
 
@@ -32,13 +32,13 @@ You can either clone the public repository:
 
 .. code-block:: console
 
-    $ git clone git://github.com/eublefar/botbowl_bot
+    $ git clone git://github.com/eublefar/gym-loop
 
 Or download the `tarball`_:
 
 .. code-block:: console
 
-    $ curl -OJL https://github.com/eublefar/botbowl_bot/tarball/master
+    $ curl -OJL https://github.com/eublefar/gym-loop/tarball/master
 
 Once you have a copy of the source, you can install it with:
 
@@ -47,5 +47,5 @@ Once you have a copy of the source, you can install it with:
     $ python setup.py install
 
 
-.. _Github repo: https://github.com/eublefar/botbowl_bot
-.. _tarball: https://github.com/eublefar/botbowl_bot/tarball/master
+.. _Github repo: https://github.com/eublefar/gym-loop
+.. _tarball: https://github.com/eublefar/gym-loop/tarball/master

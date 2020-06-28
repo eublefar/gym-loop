@@ -1,4 +1,4 @@
-Welcome to BotBowl bot's documentation!
+Welcome to Gym Loop documentation!
 ======================================
 
 .. toctree::
