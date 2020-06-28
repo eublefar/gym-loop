@@ -1,1 +1,1 @@
-"""Unit test package for botbowl_bot."""
+"""Unit test package for gym-loop."""

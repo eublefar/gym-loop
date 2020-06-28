@@ -4,8 +4,8 @@
 
 import gym
 
-from botbowl_bot.loops.default_loop import DefaultLoop
-from botbowl_bot.agents.random_agent import RandomAgent
+from gym_loop.loops.default_loop import DefaultLoop
+from gym_loop.agents.random_agent import RandomAgent
 
 
 def test_train_run(mocker):
