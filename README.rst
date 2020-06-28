@@ -39,48 +39,44 @@ Features
 Usage
 -------
 
-To create an agent that is compatible with gym loop you have to implement BaseAgent class from gym_loop::
+To create an agent that is compatible with gym loop you have to implement BaseAgent class::
 
         class BaseAgent:
-        @staticmethod
-        def get_default_parameters():
-                """Specifies tweakable parameters for agents
-                
-                Returns:
-                        dict: default parameters for the agent
-                """
-                raise NotImplementedError()
+                @staticmethod
+                def get_default_parameters():
+                        """Specifies tweakable parameters for agents
+                        
+                        Returns:
+                                dict: default parameters for the agent
+                        """
+                        raise NotImplementedError()
 
-        def act(self, state, episode_num):
-                """Retrieves agent's action upon state"""
-                raise NotImplementedError()
+                def act(self, state, episode_num):
+                        """Retrieves agent's action upon state"""
+                        raise NotImplementedError()
 
-        def memorize(self, last_ob, action, reward, done, ob):
-                """Called after environment steps on action, arguments are classic SARSA tuple"""
-                raise NotImplementedError()
+                def memorize(self, last_ob, action, reward, done, ob):
+                        """Called after environment steps on action, arguments are classic SARSA tuple"""
+                        raise NotImplementedError()
 
-        def update(self, episode_num):
-                """Called immediately after memorize"""
-                raise NotImplementedError()
+                def update(self, episode_num):
+                        """Called immediately after memorize"""
+                        raise NotImplementedError()
 
-        def __init__(self, **params):
-                super().__init__()
-                self.parameters = self.get_default_parameters()
-                self.parameters.update(params)
+                def __init__(self, **params):
+                        super().__init__()
+                        self.parameters = self.get_default_parameters()
+                        self.parameters.update(params)
 
-Static method get_default_parameters returns parameters to add to yaml config,
-class consumes it then through self.parameters.
-Lets say you have created your agent in your home folder under the name my_agent.py
-(with class name MyAgent) All you have to do then is to generate default config with gym-loop util::
+Static method get_default_parameters returns parameters that are added to yaml config.
+Internally class consumes it through self.parameters member.
+
+When agent is implemented, default run config can then be generated using gym-loop util. 
+Agent can be refered to with both "filepath:Classname" and "package.module:Classname" format. e.g.::
 
         gym-loop create-default --agent "~/my_agent.py:MyAgent" --run-config my-agent-default-run.yaml
 
-Alternatively you can package your agent (e.g. into my_agents package) 
-and install it in your environment, then it's possible to run it like that::
-
-        gym-loop create-default --agent "my_agents.my_agent:MyAgent" --run-config my-agent-default-run.yaml
-
-This will output my-agent-default-run.yaml file that then can be used with::
+This will output my-agent-default-run.yaml file. This run config can then be configured and used with::
 
       gym-loop train -c my-agent-default-run.yaml
 
