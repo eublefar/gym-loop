@@ -7,7 +7,7 @@ class RandomAgent(BaseAgent):
         return {}
 
     def __init__(self, **params):
-        super().__init__()
+        super().__init__(**params)
         self.action_space = params["action_space"]
 
     def memorize(self, last_ob, action, reward, done, ob):

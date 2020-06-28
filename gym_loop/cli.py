@@ -1,8 +1,8 @@
-"""Console script for botbowl_bot."""
+"""Console script for gym-loop."""
 import sys
 import click
 import yaml
-from botbowl_bot.botbowl_bot import (
+from gym_loop.gym_loop import (
     train_agent,
     eval_agent,
     get_default_params,
@@ -12,7 +12,7 @@ from botbowl_bot.botbowl_bot import (
 
 @click.group()
 def main(run_config):
-    """Console script for botbowl_bot."""
+    """Console script for gym-loop."""
     return 0
 
 
@@ -61,7 +61,7 @@ def validate_module_option(ctx, param, value):
 @click.option(
     "-a",
     "--agent",
-    default="botbowl_bot.agents.random_agent:RandomAgent",
+    default="gym_loop.agents.random_agent:RandomAgent",
     type=click.STRING,
     callback=validate_module_option,
     help="Agent string for which spec will be generated",
@@ -69,7 +69,7 @@ def validate_module_option(ctx, param, value):
 @click.option(
     "-a",
     "--loop",
-    default="botbowl_bot.loops.default_loop:DefaultLoop",
+    default="gym_loop.loops.default_loop:DefaultLoop",
     type=click.STRING,
     callback=validate_module_option,
     help="Loop string for which spec will be generated",
