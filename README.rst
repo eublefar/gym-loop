@@ -20,7 +20,7 @@ BotBowl bot
 
 
 
-Reinforcement learning bot for bot bowl competition
+Reinforcement learning bots
 
 
 * Free software: MIT license

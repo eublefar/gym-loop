@@ -1,0 +1,5 @@
+git+https://github.com/njustesen/ffai
+gym
+pyyaml
+torch
+tensorboardX
