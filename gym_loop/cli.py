@@ -75,7 +75,7 @@ def validate_module_option(ctx, param, value):
     help="Loop string for which spec will be generated",
 )
 def create_default(run_config, agent, loop):
-    """Produce default run config for an agent"""
+    """Produce default run config for the agent and loop specified"""
     params = get_default_params(agent, loop)
     yaml_str = yaml.dump(params)
     run_config.write(yaml_str)
