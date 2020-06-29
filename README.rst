@@ -55,20 +55,20 @@ It will create default-run.yaml that will look like this::
         loop:
                 class: gym_loop.loops.default_loop:DefaultLoop
                 parameters:
-                episodes_per_checkpoint: 10
-                eval_episodes: 10
-                eval_logdir: ./eval_logs
-                eval_record: false
-                eval_record_dir: ./eval_records
-                eval_render: false
-                logdir: ./logs
-                max_episode_len: 5000
-                max_episodes: 5
-                random_episodes: 0
-                record: false
-                record_dir: ./episode_records
-                render: false
-                time_per_checkpoint: null
+                        episodes_per_checkpoint: 10
+                        eval_episodes: 10
+                        eval_logdir: ./eval_logs
+                        eval_record: false
+                        eval_record_dir: ./eval_records
+                        eval_render: false
+                        logdir: ./logs
+                        max_episode_len: 5000
+                        max_episodes: 5
+                        random_episodes: 0
+                        record: false
+                        record_dir: ./episode_records
+                        render: false
+                        time_per_checkpoint: null
 
 As you can see this run spec will create RandomAgent on pendulum env with default loop.
 If you would like to test non-standard gym environment you can add it's package into imports list.
