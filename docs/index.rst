@@ -1,16 +1,15 @@
 Welcome to Gym Loop documentation!
 ======================================
 
+Reusable loop logic for OpenAI gym environments.
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:
 
-   readme
    installation
-   usage
+   readme
    modules
-   contributing
-   authors
    history
 
 Indices and tables

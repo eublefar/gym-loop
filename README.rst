@@ -33,8 +33,8 @@ Features
 
 * Deep learning framework agnostic
 * Easy to track experiments with simple YAML configs
-* Easy agent packaging without rewriting argument parsing over and over
-* Super simple 
+* Easy agent packaging
+* Super simple (<300 lines of code) 
 
 Quickstart
 -------
