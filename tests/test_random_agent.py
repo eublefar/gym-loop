@@ -2,7 +2,7 @@
 
 import gym
 
-from botbowl_bot.agents.random_agent import RandomAgent
+from gym_loop.agents.random_agent import RandomAgent
 
 
 def test_act():

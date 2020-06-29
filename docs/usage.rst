@@ -4,4 +4,4 @@ Usage
 
 To use BotBowl bot in a project::
 
-    import botbowl_bot
+    import gym_loop

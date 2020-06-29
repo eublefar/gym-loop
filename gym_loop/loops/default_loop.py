@@ -29,7 +29,6 @@ class DefaultLoop(BaseLoop):
     def __init__(self, agent, env, **params):
         super().__init__()
         self.parameters.update(params)
-        print(self.parameters)
         self.writer = SummaryWriter(logdir=self.parameters["logdir"])
         self.eval_writer = SummaryWriter(logdir=self.parameters["logdir"])
         self.env = env
