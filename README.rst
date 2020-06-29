@@ -36,10 +36,49 @@ Features
 * Easy agent packaging without rewriting argument parsing over and over
 * Super simple 
 
-Usage
+Quickstart
 -------
 
-To create an agent that is compatible with gym loop you have to implement BaseAgent class::
+This tool revolves around YAML configs, so lets look at one.::
+
+        gym-loop create-default --run-config default-run.yaml
+
+It will create default-run.yaml that will look like this::
+
+        agent:
+                class: gym_loop.agents.random_agent:RandomAgent
+                parameters: {}
+        env:
+                imports: []
+                name: Pendulum-v0
+                parameters: {}
+        loop:
+                class: gym_loop.loops.default_loop:DefaultLoop
+                parameters:
+                episodes_per_checkpoint: 10
+                eval_episodes: 10
+                eval_logdir: ./eval_logs
+                eval_record: false
+                eval_record_dir: ./eval_records
+                eval_render: false
+                logdir: ./logs
+                max_episode_len: 5000
+                max_episodes: 5
+                random_episodes: 0
+                record: false
+                record_dir: ./episode_records
+                render: false
+                time_per_checkpoint: null
+
+As you can see this run spec will create RandomAgent on pendulum env with default loop.
+If you would like to test non-standard gym environment you can add it's package into imports list.
+Lets change render to true and run it with::
+
+        gym-loop train -c default-run.yaml
+
+You should see random agent in action.
+
+To create an agent gym_loop.agents.BaseAgent class should be implemented::
 
         class BaseAgent:
                 @staticmethod
@@ -71,18 +110,21 @@ To create an agent that is compatible with gym loop you have to implement BaseAg
 Static method get_default_parameters returns parameters that are added to yaml config.
 Internally class consumes it through self.parameters member.
 
-When agent is implemented, default run config can then be generated using gym-loop util. 
-Agent can be refered to with both "filepath:Classname" and "package.module:Classname" format. e.g.::
+Then just generate default run config using gym-loop util. 
+Agent can be refered to with both "filepath.py:Classname" and "package.module:Classname" format (package must be installed in the environment). e.g.::
 
         gym-loop create-default --agent "~/my_agent.py:MyAgent" --run-config my-agent-default-run.yaml
 
-This will output my-agent-default-run.yaml file. This run config can then be configured and used with::
+This will output my-agent-default-run.yaml file.
+This run config can then be configured and used with::
 
       gym-loop train -c my-agent-default-run.yaml
 
       # or to run environment without memorize and update
       
       gym-loop evaluate -c my-agent-default-run.yaml
+
+Different loop logic can also be implemented through gym_loop.loops.BaseLoop
 
 Credits
 -------
