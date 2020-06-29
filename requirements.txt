@@ -1,5 +1,5 @@
 git+https://github.com/njustesen/ffai
-gym
+gym==0.17.2
 pyyaml
 torch
 tensorboardX
