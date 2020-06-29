@@ -1,5 +1,5 @@
 git+https://github.com/njustesen/ffai
-gym
-pyyaml
-torch
-tensorboardX
+gym==0.17.2
+pyyaml==5.3.1
+torch==1.5.1
+tensorboardX==2.0
