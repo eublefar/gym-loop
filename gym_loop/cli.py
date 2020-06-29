@@ -11,7 +11,7 @@ from gym_loop.gym_loop import (
 
 
 @click.group()
-def main(run_config):
+def main():
     """Console script for gym-loop."""
     return 0
 
@@ -44,7 +44,7 @@ def eval(run_config):
 
 def validate_module_option(ctx, param, value):
     if validate_module_str(value):
-        return
+        return value
     else:
         click.echo("Module string must be of format package.module:Class")
         ctx.exit()
