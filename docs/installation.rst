@@ -8,13 +8,13 @@ Installation
 Stable release
 --------------
 
-To install BotBowl bot, run this command in your terminal:
+To install Gym loop util, run this command in your terminal:
 
 .. code-block:: console
 
     $ pip install gym-loop
 
-This is the preferred method to install BotBowl bot, as it will always install the most recent stable release.
+This is the preferred method to install gym-loop, as it will always install the most recent stable release.
 
 If you don't have `pip`_ installed, this `Python installation guide`_ can guide
 you through the process.
