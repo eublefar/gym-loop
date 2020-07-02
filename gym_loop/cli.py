@@ -67,7 +67,7 @@ def validate_module_option(ctx, param, value):
     help="Agent string for which spec will be generated",
 )
 @click.option(
-    "-a",
+    "-l",
     "--loop",
     default="gym_loop.loops.default_loop:DefaultLoop",
     type=click.STRING,
