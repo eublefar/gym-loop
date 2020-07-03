@@ -10,10 +10,12 @@ with open("README.rst") as readme_file:
 with open("HISTORY.rst") as history_file:
     history = history_file.read()
 
-requirements = [
-    "Click>=7.0",
-]
+with open("requirements.txt") as requirements_file:
+    requirements = [
+        req[:-1] if req[-1] == "\n" else req for req in requirements_file.readlines()
+    ]
 
+print(requirements)
 setup_requirements = [
     "pytest-runner",
 ]
@@ -36,9 +38,10 @@ setup(
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",
     ],
-    description="Reinforcement learning bot for bot bowl competition",
+    description="Minimalistic framework for reinforcement learning with OpenAI gym environments.",
     entry_points={"console_scripts": ["gym-loop=gym_loop.cli:main",],},
     install_requires=requirements,
+    extras_require={"pytorch": ["torch", "torchvision"]},
     license="MIT license",
     long_description=readme + "\n\n" + history,
     include_package_data=True,

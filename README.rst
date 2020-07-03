@@ -6,17 +6,16 @@ Gym Loop
 .. image:: https://img.shields.io/pypi/v/gym-loop.svg
         :target: https://pypi.python.org/pypi/gym-loop
 
-.. image:: https://img.shields.io/travis/eublefar/gym-loop.svg
-        :target: https://travis-ci.com/eublefar/gym-loop
+.. image:: https://travis-ci.org/eublefar/gym-loop.svg?branch=master
+        :target: https://travis-ci.org/eublefar/gym-loop
 
-.. image:: https://readthedocs.org/projects/botbowl-bot/badge/?version=latest
-        :target: https://botbowl-bot.readthedocs.io/en/latest/?badge=latest
+.. image:: https://readthedocs.org/projects/gym-loop/badge/?version=latest
+        :target: https://gym-loop.readthedocs.io/en/latest/?badge=latest
         :alt: Documentation Status
 
-
 .. image:: https://pyup.io/repos/github/eublefar/gym-loop/shield.svg
-     :target: https://pyup.io/repos/github/eublefar/gym-loop/
-     :alt: Updates
+        :target: https://pyup.io/repos/github/eublefar/gym-loop/
+        :alt: Updates
 
 
 

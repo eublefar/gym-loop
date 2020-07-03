@@ -1,12 +1,8 @@
 class BaseAgent:
-    @staticmethod
-    def get_default_parameters():
-        """Specifies tweakable parameters for agents
-        
-        Returns:
-            dict: default parameters for the agent
-        """
-        raise NotImplementedError()
+    def __init__(self, **params):
+        super().__init__()
+        self.__dict__.update(self.get_default_parameters())
+        self.__dict__.update(params)
 
     def act(self, state, episode_num):
         """Retrieves agent's action upon state"""
@@ -20,7 +16,11 @@ class BaseAgent:
         """Called immediately after memorize"""
         raise NotImplementedError()
 
-    def __init__(self, **params):
-        super().__init__()
-        self.parameters = self.get_default_parameters()
-        self.parameters.update(params)
+    @staticmethod
+    def get_default_parameters():
+        """Specifies tweakable parameters for agents
+        
+        Returns:
+            dict: default parameters for the agent
+        """
+        raise NotImplementedError()

@@ -38,9 +38,13 @@ def build_env(params):
     env_params = params["env"]["parameters"]
     env_imports = params["env"]["imports"]
     env_string = params["env"]["name"]
+    seed = env_params.pop("seed", None)
     for import_module in env_imports:
         importlib.import_module(import_module)
-    return gym.make(env_string, **env_params)
+    env = gym.make(env_string, **env_params)
+    if seed is not None:
+        env.seed(seed)
+    return env
 
 
 def build_agent(params, env):
