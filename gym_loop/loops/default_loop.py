@@ -1,6 +1,7 @@
 from tensorboardX import SummaryWriter
 import logging
 from gym import wrappers
+import numpy as np
 
 from .base_loop import BaseLoop
 
@@ -72,6 +73,8 @@ class DefaultLoop(BaseLoop):
             metrics = self.agent.metrics(i)
             if metrics is not None:
                 for name, value in metrics.items():
+                    if np.isnan(value):
+                        logging.warn("{} has nan".format(name))
                     self.writer.add_scalar(name, value, global_step=i)
 
             self.writer.add_scalar("reward", reward_per_ep, global_step=i)
