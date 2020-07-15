@@ -3,7 +3,7 @@ from .replay_buffer import ReplayBuffer
 import numpy as np
 import random
 import logging
-from typing import List, Dict
+from typing import Deque, Dict, List, Tuple
 
 logging.basicConfig(level=logging.INFO)
 
@@ -21,12 +21,20 @@ class PrioritizedReplayBuffer(ReplayBuffer):
     """
 
     def __init__(
-        self, obs_dim: int, size: int, batch_size: int = 32, alpha: float = 0.6
+        self,
+        obs_dim: int,
+        size: int,
+        batch_size: int = 32,
+        alpha: float = 0.6,
+        n_step: int = 1,
+        gamma: float = 0.99,
     ):
         """Initialization."""
         assert alpha >= 0
 
-        super(PrioritizedReplayBuffer, self).__init__(obs_dim, size, batch_size)
+        super(PrioritizedReplayBuffer, self).__init__(
+            obs_dim, size, batch_size, n_step, gamma
+        )
         self.max_priority, self.tree_ptr = 1.0, 0
         self.alpha = alpha
 
@@ -40,13 +48,16 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     def store(
         self, obs: np.ndarray, act: int, rew: float, next_obs: np.ndarray, done: bool
-    ):
+    ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, bool]:
         """Store experience and priority."""
-        super().store(obs, act, rew, next_obs, done)
+        transition = super().store(obs, act, rew, next_obs, done)
 
-        self.sum_tree[self.tree_ptr] = self.max_priority ** self.alpha
-        self.min_tree[self.tree_ptr] = self.max_priority ** self.alpha
-        self.tree_ptr = (self.tree_ptr + 1) % self.max_size
+        if transition:
+            self.sum_tree[self.tree_ptr] = self.max_priority ** self.alpha
+            self.min_tree[self.tree_ptr] = self.max_priority ** self.alpha
+            self.tree_ptr = (self.tree_ptr + 1) % self.max_size
+
+        return transition
 
     def sample_batch(self, beta: float = 0.4) -> Dict[str, np.ndarray]:
         """Sample a batch of experiences."""
