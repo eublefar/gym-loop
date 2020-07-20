@@ -1,7 +1,7 @@
 class BaseLoop:
-    def __init__(self):
-        super().__init__()
-        self.parameters = self.get_default_parameters()
+    def __init__(self, **params):
+        self.__dict__.update(self.get_default_parameters())
+        self.__dict__.update(params)
 
     def train(self):
         raise NotImplementedError()
