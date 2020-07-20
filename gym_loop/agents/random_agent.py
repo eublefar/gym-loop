@@ -1,4 +1,5 @@
 from .base_agent import BaseAgent
+import numpy as np
 
 
 class RandomAgent(BaseAgent):
@@ -10,7 +11,15 @@ class RandomAgent(BaseAgent):
         super().__init__(**params)
         self.action_space = params["action_space"]
 
-    def memorize(self, last_ob, action, reward, done, ob):
+    def memorize(
+        self,
+        last_ob: np.ndarray,
+        action: np.ndarray,
+        reward: np.ndarray,
+        done: np.ndarray,
+        ob: np.ndarray,
+        global_step: int,
+    ):
         pass
 
     def act(self, state, episode_num):
@@ -18,3 +27,6 @@ class RandomAgent(BaseAgent):
 
     def update(self, episode_num):
         pass
+
+    def metrics(self, episode_num):
+        return {"step": episode_num}

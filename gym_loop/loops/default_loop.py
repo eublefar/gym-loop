@@ -84,18 +84,18 @@ class DefaultLoop(BaseLoop):
                 self.agent.save("checkpoint_{}".format(i))
 
     def evaluate(self):
-        if self.parameters["eval_record"]:
+        if self.eval_record:
             logging.info(
-                f"Using Gym monitor to save videos, render self.environment flag {self.parameters['eval_render']}"
+                f"Using Gym monitor to save videos, render self.environment flag {self.eval_render}"
             )
             self.env = wrappers.Monitor(
-                self.env, directory=self.parameters["eval_record_dir"], force=True
+                self.env, directory=self.eval_record_dir, force=True
             )
-        for i in range(self.parameters["eval_episodes"]):
+        for i in range(self.eval_episodes):
             ob = self.env.reset()
             reward_per_ep = 0
-            for ep_step in range(self.parameters["max_episode_len"]):
-                if self.parameters["render"]:
+            for ep_step in range(self.max_episode_len):
+                if self.render:
                     self.env.render()
                 ob, reward, done = self._step_policy(ob, update=False)
                 reward_per_ep += reward
