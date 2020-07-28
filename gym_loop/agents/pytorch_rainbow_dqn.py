@@ -17,12 +17,12 @@ from torch.distributions.normal import Normal
 logging.basicConfig(level=logging.INFO)
 
 
-class GMNetwork(nn.Module):
+class CategoricalNet(nn.Module):
     def __init__(
         self, in_dim: int, out_dim: int, atom_size: int, support: torch.Tensor
     ):
         """Initialization."""
-        super(GMNetwork, self).__init__()
+        super(CategoricalNet, self).__init__()
 
         self.support = support
         self.out_dim = out_dim
@@ -100,13 +100,13 @@ class PytorchRainbowDqn(BaseAgent):
 
         # networks: dqn, dqn_target
         self.dqn = (
-            GMNetwork(
+            CategoricalNet(
                 obs_dim, action_dim, atom_size=self.atom_size, support=self.support
             )
             .to(self.device)
             .train()
         )
-        self.dqn_target = GMNetwork(
+        self.dqn_target = CategoricalNet(
             obs_dim, action_dim, atom_size=self.atom_size, support=self.support
         ).to(self.device)
         self.dqn_target.load_state_dict(self.dqn.state_dict())
@@ -153,7 +153,7 @@ class PytorchRainbowDqn(BaseAgent):
 
     def update_model(self) -> torch.Tensor:
         """Update the model by gradient descent."""
-        samples = self.memory.sample_batch()
+        samples = self.memory.sample_batch(self.beta)
         weights = torch.FloatTensor(samples["weights"].reshape(-1, 1)).to(self.device)
         indices = samples["indices"]
         elementwise_loss = self._compute_dqn_loss(samples)
