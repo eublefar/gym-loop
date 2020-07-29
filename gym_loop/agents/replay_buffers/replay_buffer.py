@@ -1,6 +1,6 @@
 import numpy as np
 from collections import deque
-from typing import Deque, Dict, List, Tuple
+from typing import Deque, Dict, List, Tuple, Iterable
 
 
 class ReplayBuffer:
@@ -61,6 +61,23 @@ class ReplayBuffer:
             # for N-step Learning
             indices=idxs,
         )
+
+    def sample_iterator(self) -> Iterable[Dict[str, np.ndarray]]:
+        ids = np.arange(self.size - (self.size % self.batch_size))
+        ids = np.random.permutation(ids)
+        ids = ids.reshape([-1, self.batch_size])
+
+        for idxs in ids:
+            yield dict(
+                obs=self.obs_buf[idxs],
+                next_obs=self.next_obs_buf[idxs],
+                acts=self.acts_buf[idxs],
+                rews=self.rews_buf[idxs],
+                done=self.done_buf[idxs],
+                data=[self.data[idx] for idx in idxs],
+                # for N-step Learning
+                indices=idxs,
+            )
 
     def sample_batch_from_idxs(self, idxs: np.ndarray) -> Dict[str, np.ndarray]:
         # for N-step Learning
