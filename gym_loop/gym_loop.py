@@ -52,8 +52,21 @@ def build_agent(params, env):
     agent_params = params["agent"]["parameters"]
     agent_class_string = params["agent"]["class"]
     Agent = module_str_to_class(agent_class_string)
+
     agent_params["observation_space"] = env.observation_space
     agent_params["action_space"] = env.action_space
+
+    if "policy" in params["agent"]:
+        policy_class_string = params["agent"]["policy"]["class"]
+        policy_params = params["agent"]["policy"]["parameters"]
+    else:
+        p = Agent.get_default_policy()
+        policy_class_string = p["class"]
+        policy_params = p["parameters"]
+
+    Policy = module_str_to_class(policy_class_string)
+    agent_params["Policy"] = Policy
+    agent_params["policy_parameters"] = policy_params
     return Agent(**agent_params)
 
 
@@ -81,7 +94,11 @@ def get_default_params(agent_str, loop_str):
     Loop = module_str_to_class(loop_str)
     return {
         "env": {"name": "Pendulum-v0", "parameters": {}, "imports": []},
-        "agent": {"class": agent_str, "parameters": Agent.get_default_parameters()},
+        "agent": {
+            "class": agent_str,
+            "policy": Agent.get_default_policy(),
+            "parameters": Agent.get_default_parameters(),
+        },
         "loop": {"class": loop_str, "parameters": Loop.get_default_parameters()},
     }
 

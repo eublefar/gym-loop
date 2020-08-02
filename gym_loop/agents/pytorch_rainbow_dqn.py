@@ -1,71 +1,20 @@
 """Thanks to https://github.com/Curt-Park/rainbow-is-all-you-need"""
 from typing import Dict, List, Tuple
-from .base_agent import BaseAgent
-from .replay_buffers.per_buffer import PrioritizedReplayBuffer
-from .replay_buffers.replay_buffer import ReplayBuffer
 import numpy as np
 import torch
 from torch import nn, optim
 from torch.nn.utils import clip_grad_norm_
 import torch.nn.functional as F
-import logging
-import math
-from .layers.noisy_layer import NoisyLinear
 from torch.distributions.categorical import Categorical
 from torch.distributions.normal import Normal
+import logging
+import math
+from .base_agent import BaseAgent
+from .replay_buffers.per_buffer import PrioritizedReplayBuffer
+from .replay_buffers.replay_buffer import ReplayBuffer
+from ..policies.categorical_net import CategoricalNet
 
 logging.basicConfig(level=logging.INFO)
-
-
-class CategoricalNet(nn.Module):
-    def __init__(
-        self, in_dim: int, out_dim: int, atom_size: int, support: torch.Tensor
-    ):
-        """Initialization."""
-        super(CategoricalNet, self).__init__()
-
-        self.support = support
-        self.out_dim = out_dim
-        self.atom_size = atom_size
-
-        # set common feature layer
-        self.feature_layer = nn.Sequential(nn.Linear(in_dim, 128), nn.ReLU())
-
-        # set advantage layer
-        self.advantage_hidden_layer = NoisyLinear(128, 128)
-        self.advantage_layer = NoisyLinear(128, out_dim * atom_size)
-
-        # set value layer
-        self.value_hidden_layer = NoisyLinear(128, 128)
-        self.value_layer = NoisyLinear(128, atom_size)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward method implementation."""
-        dist = self.dist(x)
-        return torch.sum(dist * self.support, dim=2)
-
-    def dist(self, x: torch.Tensor) -> torch.Tensor:
-        """Get distribution for atoms."""
-        feature = self.feature_layer(x)
-        adv_hid = F.relu(self.advantage_hidden_layer(feature))
-        val_hid = F.relu(self.value_hidden_layer(feature))
-
-        advantage = self.advantage_layer(adv_hid).view(-1, self.out_dim, self.atom_size)
-        value = self.value_layer(val_hid).view(-1, 1, self.atom_size)
-        q_atoms = value + advantage - advantage.mean(dim=1, keepdim=True)
-
-        dist = F.softmax(q_atoms, dim=-1)
-        dist = dist.clamp(min=1e-3)  # for avoiding nans
-
-        return dist
-
-    def reset_noise(self):
-        for module in self.value_layer.modules():
-            if hasattr(module, "reset_noise"):
-                module.reset_noise()
-        for module in self.advantage_layer.modules():
-            if hasattr(module, "reset_noise"):
-                module.reset_noise()
 
 
 class PytorchRainbowDqn(BaseAgent):
@@ -100,12 +49,20 @@ class PytorchRainbowDqn(BaseAgent):
 
         # networks: dqn, dqn_target
         self.dqn = (
-            CategoricalNet(
-                obs_dim, action_dim, atom_size=self.atom_size, support=self.support
+            self.Policy(
+                obs_dim,
+                action_dim,
+                atom_size=self.atom_size,
+                support=self.support,
+                **self.policy_parameters
             )
             .to(self.device)
             .train()
         )
+        if not hasattr(self.dqn, "distribution"):
+            raise NotImplementedError(
+                "Policy does not have distribution(state) -> atoms method"
+            )
         self.dqn_target = CategoricalNet(
             obs_dim, action_dim, atom_size=self.atom_size, support=self.support
         ).to(self.device)
@@ -121,7 +78,7 @@ class PytorchRainbowDqn(BaseAgent):
 
     def act(self, state: np.ndarray, global_step: int) -> np.ndarray:
         """Select an action from the input state."""
-        selected_action = self.dqn(torch.FloatTensor(state).to(self.device)).argmax()
+        selected_action = self.dqn.act(state)["q_values"].argmax()
         return selected_action.detach().cpu().numpy()
 
     def memorize(
@@ -208,8 +165,8 @@ class PytorchRainbowDqn(BaseAgent):
         if gamma is None:
             gamma = self.gamma
         device = self.device  # for shortening the following lines
-        state = torch.FloatTensor(samples["obs"]).to(device)
-        next_state = torch.FloatTensor(samples["next_obs"]).to(device)
+        state = samples["obs"]
+        next_state = samples["next_obs"]
         action = torch.LongTensor(samples["acts"]).to(device)
         reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
         done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
@@ -219,8 +176,8 @@ class PytorchRainbowDqn(BaseAgent):
 
         with torch.no_grad():
             # Double DQN
-            next_action = self.dqn(next_state).argmax(1)
-            next_dist = self.dqn_target.dist(next_state)
+            next_action = self.dqn(next_state)["q_values"].argmax(1)
+            next_dist = self.dqn_target.distribution(next_state)
             next_dist = next_dist[range(self.batch_size), next_action]
 
             t_z = reward + (1 - done) * gamma * self.support
@@ -247,7 +204,7 @@ class PytorchRainbowDqn(BaseAgent):
                 0, (u + offset).view(-1), (next_dist * (b - l.float())).view(-1)
             )
 
-        dist = self.dqn.dist(state)
+        dist = self.dqn.distribution(state)
         log_p = torch.log(dist[range(self.batch_size), action])
         elementwise_loss = -(proj_dist * log_p).sum(1)
 
@@ -277,3 +234,11 @@ class PytorchRainbowDqn(BaseAgent):
             "v_min": -600,
             "v_max": 300,
         }
+
+    @staticmethod
+    def get_default_policy():
+        return {
+            "class": "gym_loop.policies.categorical_net:CategoricalNet",
+            "parameters": {},
+        }
+

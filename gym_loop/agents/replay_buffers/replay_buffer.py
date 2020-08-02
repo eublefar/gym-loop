@@ -8,22 +8,18 @@ class ReplayBuffer:
     """A simple numpy replay buffer."""
 
     def __init__(
-        self,
-        obs_dim: int,
-        size: int,
-        batch_size: int = 32,
-        gamma: float = 0.99,
-        n_envs: int = 1,
+        self, size: int, batch_size: int = 32, gamma: float = 0.99, n_envs: int = 1
     ):
-        self.obs_buf = np.zeros([size, obs_dim], dtype=np.float32)
-        self.next_obs_buf = np.zeros([size, obs_dim], dtype=np.float32)
+        self.obs_buf = np.zeros([size], dtype=np.object)
+        self.next_obs_buf = np.zeros([size], dtype=np.object)
+        # self.obs_buf = np.zeros([size, obs_dim], dtype=np.float32)
+        # self.next_obs_buf = np.zeros([size, obs_dim], dtype=np.float32)
         self.acts_buf = np.zeros([size], dtype=np.float32)
         self.rews_buf = np.zeros([size], dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.data = [{} for _ in range(size)]
         self.max_size, self.batch_size = size, batch_size
         self.ptr, self.size, = 0, 0
-        self.obs_dim = obs_dim
         self.gamma = gamma
 
     def store(
@@ -50,10 +46,9 @@ class ReplayBuffer:
 
     def sample_batch(self) -> Dict[str, np.ndarray]:
         idxs = np.random.choice(self.size, size=self.batch_size, replace=False)
-
         return dict(
-            obs=self.obs_buf[idxs],
-            next_obs=self.next_obs_buf[idxs],
+            obs=np.stack(list(self.obs_buf[idxs])),
+            next_obs=np.stack(list(self.next_obs_buf[idxs])),
             acts=self.acts_buf[idxs],
             rews=self.rews_buf[idxs],
             done=self.done_buf[idxs],
@@ -69,8 +64,8 @@ class ReplayBuffer:
 
         for idxs in ids:
             yield dict(
-                obs=self.obs_buf[idxs],
-                next_obs=self.next_obs_buf[idxs],
+                obs=np.stack(list(self.obs_buf[idxs])),
+                next_obs=np.stack(list(self.next_obs_buf[idxs])),
                 acts=self.acts_buf[idxs],
                 rews=self.rews_buf[idxs],
                 done=self.done_buf[idxs],

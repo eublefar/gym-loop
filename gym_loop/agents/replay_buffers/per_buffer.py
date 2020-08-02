@@ -22,7 +22,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     def __init__(
         self,
-        obs_dim: int,
         size: int,
         batch_size: int = 32,
         alpha: float = 0.6,
@@ -32,9 +31,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Initialization."""
         assert alpha >= 0
 
-        super(PrioritizedReplayBuffer, self).__init__(
-            obs_dim, size, batch_size, n_step, gamma
-        )
+        super(PrioritizedReplayBuffer, self).__init__(size, batch_size, n_step, gamma)
         self.max_priority, self.tree_ptr = 1000.0, 0
         self.alpha = alpha
 

@@ -39,3 +39,15 @@ class BaseAgent:
             dict: default parameters for the agent
         """
         raise NotImplementedError()
+
+    @staticmethod
+    def get_default_policy() -> Dict:
+        """Specifies default policy to use with agent
+        
+        Returns:
+            dict: class string and parameters for the policy
+        """
+        return {
+            "class": "gym_loop.policies.noisy_actor_critic:NoisyActorCritic",
+            "parameters": {},
+        }

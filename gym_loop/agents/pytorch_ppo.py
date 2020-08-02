@@ -1,4 +1,4 @@
-from typing import Dict, List, Tuple, Deque
+from typing import Dict, List, Tuple, Deque, Any
 from .base_agent import BaseAgent
 from .replay_buffers.per_buffer import PrioritizedReplayBuffer
 from .replay_buffers.replay_buffer import ReplayBuffer
@@ -16,40 +16,6 @@ from collections import deque
 logging.basicConfig(level=logging.INFO)
 
 
-class NoisyActorCritic(nn.Module):
-    def __init__(self, in_dim: int, out_dim: int):
-        """Initialization."""
-        super(NoisyActorCritic, self).__init__()
-        self.out_dim = out_dim
-
-        # set common feature layer
-        self.feature_layer = nn.Sequential(NoisyLinear(in_dim, 128), nn.ReLU())
-
-        # set advantage layer
-        self.policy_hidden_layer = nn.Linear(128, 128)
-        self.policy_layer = nn.Linear(128, out_dim)
-
-        # set value layer
-        self.value_hidden_layer = nn.Linear(128, 128)
-        self.value_layer = nn.Linear(128, 1)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Forward method implementation."""
-        feature = self.feature_layer(x)
-        policy_hid = F.relu(self.policy_hidden_layer(feature))
-        val_hid = F.relu(self.value_hidden_layer(feature))
-
-        actions = F.softmax(self.policy_layer(feature), dim=-1)
-        value = self.value_layer(feature)
-
-        return actions, value
-
-    def reset_noise(self):
-        for module in self.modules():
-            if hasattr(module, "reset_noise") and not module is self:
-                module.reset_noise()
-
-
 class PPO(BaseAgent):
     def __init__(self, **params: Dict):
         super().__init__(**params)
@@ -59,19 +25,14 @@ class PPO(BaseAgent):
         self.beta = self.buffer_beta_min
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        # self.memory = PrioritizedReplayBuffer(
-        #     obs_dim=obs_dim,
-        #     size=self.n_steps * self.n_envs,
-        #     batch_size=self.batch_size,
-        #     alpha=self.buffer_alpha,
-        #     gamma=self.gamma,
-        # )
         self.memory = ReplayBuffer(
-            obs_dim=obs_dim,
-            size=self.n_steps * self.n_envs * 2,
-            batch_size=self.batch_size,
+            size=self.n_steps * self.n_envs * 2, batch_size=self.batch_size
         )
-        self.model = NoisyActorCritic(obs_dim, action_dim).to(self.device).train()
+        self.model = (
+            self.Policy(obs_dim, action_dim, **self.policy_parameters)
+            .to(self.device)
+            .train()
+        )
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         self.buffers = [deque(maxlen=self.n_steps) for _ in range(self.n_envs)]
 
@@ -89,21 +50,22 @@ class PPO(BaseAgent):
         self.values_sum = 0
         self.values_num = 0
 
-    def act(self, state: np.ndarray, episode_num: int, env_id: int = 0):
+    def act(self, state: Any, episode_num: int, env_id: int = 0):
         """Retrieves agent's action upon state"""
-        action_distr, value = self.model(torch.FloatTensor(state).to(self.device))
-        action = Categorical(action_distr).sample()
+        outp = self.model.act(state)
+        action_distr, value = outp["action_distribution"], outp["values"]
+        action = outp["action"]
         self.last_values[env_id] = value.detach().numpy()
         self.last_action_dist[env_id] = action_distr.detach().data.numpy()
         return action.detach().cpu().numpy()
 
     def memorize(
         self,
-        last_ob: np.ndarray,
+        last_ob: Any,
         action: np.ndarray,
         reward: np.ndarray,
         done: np.ndarray,
-        ob: np.ndarray,
+        ob: Any,
         global_step: int,
         env_id: int = 0,
     ):
@@ -153,7 +115,8 @@ class PPO(BaseAgent):
         else:
             # print("not done", len(transitions))
             last_state = torch.FloatTensor(transitions[-1, 3].astype(np.float))
-            _, last_v = self.model(last_state)
+            outp = self.model(last_state)
+            last_v = outp["values"]
             last_v = last_v.detach()
 
         if lam == 1:
@@ -211,8 +174,8 @@ class PPO(BaseAgent):
 
     def _compute_loss(self, samples: Dict) -> torch.Tensor:
         device = self.device  # for shortening the following lines
-        state = torch.FloatTensor(samples["obs"]).to(device)
-        next_state = torch.FloatTensor(samples["next_obs"]).to(device)
+        state = samples["obs"]
+        next_state = samples["next_obs"]
         action = torch.LongTensor(samples["acts"]).to(device)
         reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
         done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
@@ -233,8 +196,8 @@ class PPO(BaseAgent):
             np.stack([record["action_dist"] for record in samples["data"]])
         ).to(device)
 
-        action_dist_new, value_pred = self.model(state)
-
+        outp = self.model(state)
+        action_dist_new, value_pred = outp["action_distribution"], outp["values"]
         value_loss = F.smooth_l1_loss(value_pred.squeeze(-1), values, reduction="none")
 
         action_dist = Categorical(action_dist)
