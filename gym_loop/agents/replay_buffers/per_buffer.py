@@ -1,9 +1,9 @@
+from typing import Dict, List, Tuple
 from .segment_tree import MinSegmentTree, SumSegmentTree
 from .replay_buffer import ReplayBuffer
 import numpy as np
 import random
 import logging
-from typing import Dict, List, Tuple
 
 logging.basicConfig(level=logging.INFO)
 
