@@ -1,15 +1,11 @@
 from typing import Dict, List, Tuple, Deque, Any
 from .base_agent import BaseAgent
-from .replay_buffers.per_buffer import PrioritizedReplayBuffer
 from .replay_buffers.replay_buffer import ReplayBuffer
 import numpy as np
 import torch
-from torch import nn, optim
 from torch.nn.utils import clip_grad_norm_
 import torch.nn.functional as F
 import logging
-import math
-from .layers.noisy_layer import NoisyLinear
 from torch.distributions.categorical import Categorical
 from collections import deque
 
@@ -20,20 +16,13 @@ class PPO(BaseAgent):
     def __init__(self, **params: Dict):
         super().__init__(**params)
 
-        obs_dim = self.observation_space.shape[0]
-        action_dim = self.action_space.n
         self.beta = self.buffer_beta_min
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.memory = ReplayBuffer(
             size=self.n_steps * self.n_envs * 2, batch_size=self.batch_size
         )
-        self.model = (
-            self.Policy(obs_dim, action_dim, **self.policy_parameters)
-            .to(self.device)
-            .train()
-        )
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr)
         self.buffers = [deque(maxlen=self.n_steps) for _ in range(self.n_envs)]
 
         self.last_values = [None] * self.n_envs
@@ -52,12 +41,12 @@ class PPO(BaseAgent):
 
     def act(self, state: Any, episode_num: int, env_id: int = 0):
         """Retrieves agent's action upon state"""
-        outp = self.model.act(state)
+        outp = self.policy.act(state)
         action_distr, value = outp["action_distribution"], outp["values"]
         action = outp["action"]
         self.last_values[env_id] = value.detach().numpy()
         self.last_action_dist[env_id] = action_distr.detach().data.numpy()
-        return action.detach().cpu().numpy()
+        return action
 
     def memorize(
         self,
@@ -115,7 +104,7 @@ class PPO(BaseAgent):
         else:
             # print("not done", len(transitions))
             last_state = torch.FloatTensor(transitions[-1, 3].astype(np.float))
-            outp = self.model(last_state)
+            outp = self.policy(last_state)
             last_v = outp["values"]
             last_v = last_v.detach()
 
@@ -157,13 +146,13 @@ class PPO(BaseAgent):
             self.uploaded = [False for i in range(self.n_envs)]
             for k in range(self.epochs):
                 for samples in self.memory.sample_iterator():
-
                     elem_loss = self._compute_loss(samples)
                     loss = torch.mean(elem_loss)
+                    self.optimizer.zero_grad()
                     loss.backward()
-                    clip_grad_norm_(self.model.parameters(), 0.5)
+                    clip_grad_norm_(self.policy.parameters(), 0.5)
                     self.optimizer.step()
-                    self.model.reset_noise()
+                    self.policy.reset_noise()
             self.memory.empty()
             self.beta = max(
                 self.buffer_beta_min,
@@ -175,10 +164,7 @@ class PPO(BaseAgent):
     def _compute_loss(self, samples: Dict) -> torch.Tensor:
         device = self.device  # for shortening the following lines
         state = samples["obs"]
-        next_state = samples["next_obs"]
         action = torch.LongTensor(samples["acts"]).to(device)
-        reward = torch.FloatTensor(samples["rews"].reshape(-1, 1)).to(device)
-        done = torch.FloatTensor(samples["done"].reshape(-1, 1)).to(device)
 
         values = torch.FloatTensor(
             np.stack([record["value"] for record in samples["data"]])
@@ -196,7 +182,7 @@ class PPO(BaseAgent):
             np.stack([record["action_dist"] for record in samples["data"]])
         ).to(device)
 
-        outp = self.model(state)
+        outp = self.policy(state)
         action_dist_new, value_pred = outp["action_distribution"], outp["values"]
         value_loss = F.smooth_l1_loss(value_pred.squeeze(-1), values, reduction="none")
 
@@ -274,4 +260,3 @@ class PPO(BaseAgent):
             "buffer_beta_min": 0.1,
             "buffer_beta_decay": 1 / 2000,
         }
-

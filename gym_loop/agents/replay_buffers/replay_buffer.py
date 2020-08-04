@@ -1,6 +1,5 @@
 import numpy as np
-from collections import deque
-from typing import Deque, Dict, List, Tuple, Iterable
+from typing import Dict, Tuple, Iterable
 
 
 class ReplayBuffer:

@@ -14,6 +14,7 @@ class MultiEnvLoop(BaseLoop):
     def get_default_parameters():
         """Get default parameter dictionary for the loop"""
         return {
+            "load_from": None,
             "random_episodes": 0,
             "max_episode_len": 5000,
             "record": False,
@@ -44,6 +45,8 @@ class MultiEnvLoop(BaseLoop):
 
     def train(self):
         """Training loop"""
+        if self.load_from is not None:
+            self.policy.load(self.load_from)
         # random loop
         logging.info("Running random episodes {} times".format(self.random_episodes))
         for i in range(self.random_episodes):
@@ -98,7 +101,7 @@ class MultiEnvLoop(BaseLoop):
                     reward_per_ep[env_id] = 0
                     ep_step[env_id] = 0
                     if episode % self.episodes_per_checkpoint == 0 and episode != 0:
-                        self.agent.save("checkpoint_{}".format(i))
+                        self.policy.save("checkpoint_{}".format(i))
             self.agent.update(episode)
 
     def evaluate(self):

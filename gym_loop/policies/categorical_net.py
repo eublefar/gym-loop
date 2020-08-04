@@ -1,21 +1,17 @@
-from typing import Dict, List, Tuple
 import numpy as np
 import torch
-from torch import nn, optim
-from torch.nn.utils import clip_grad_norm_
+from torch import nn
 import torch.nn.functional as F
-import math
 from gym_loop.agents.layers.noisy_layer import NoisyLinear
-from torch.distributions.categorical import Categorical
 from .base_policy import BasePolicy
 
 
-class CategoricalNet(BasePolicy):
+class CategoricalNet(BasePolicy, nn.Module):
     def __init__(
         self, in_dim: int, out_dim: int, atom_size: int, support: torch.Tensor
     ):
         """Initialization."""
-        super(CategoricalNet, self).__init__()
+        nn.Module.__init__(self)
 
         self.support = support
         self.out_dim = out_dim
@@ -52,6 +48,9 @@ class CategoricalNet(BasePolicy):
         dist = dist.clamp(min=1e-3)  # for avoiding nans
 
         return dist
+
+    def __call__(self, *args):
+        nn.Module.__call__(self, *args)
 
     def reset_noise(self):
         for module in self.value_layer.modules():

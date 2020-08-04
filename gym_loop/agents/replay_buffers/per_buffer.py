@@ -3,7 +3,7 @@ from .replay_buffer import ReplayBuffer
 import numpy as np
 import random
 import logging
-from typing import Deque, Dict, List, Tuple
+from typing import Dict, List, Tuple
 
 logging.basicConfig(level=logging.INFO)
 

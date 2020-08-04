@@ -1,6 +1,5 @@
 import torch
-from torch import nn, optim
-from torch.nn.utils import clip_grad_norm_
+from torch import nn
 import torch.nn.functional as F
 import logging
 import math

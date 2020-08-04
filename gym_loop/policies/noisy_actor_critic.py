@@ -1,26 +1,27 @@
 from typing import Dict, Union
 import numpy as np
 import torch
-from torch import nn, optim
-from torch.nn.utils import clip_grad_norm_
+from torch import nn
 import torch.nn.functional as F
-import math
+import gym
 from gym_loop.agents.layers.noisy_layer import NoisyLinear
 from torch.distributions.categorical import Categorical
+from .base_policy import BasePolicy
 
 
-class NoisyActorCritic(nn.Module):
-    def __init__(self, in_dim: int, out_dim: int):
+class NoisyActorCritic(BasePolicy, nn.Module):
+    def __init__(self, observation_space: gym.Space, action_space: gym.Space):
         """Initialization."""
-        super(NoisyActorCritic, self).__init__()
-        self.out_dim = out_dim
+        nn.Module.__init__(self)
 
         # set common feature layer
-        self.feature_layer = nn.Sequential(NoisyLinear(in_dim, 128), nn.ReLU())
+        self.feature_layer = nn.Sequential(
+            NoisyLinear(observation_space.shape[0], 128), nn.ReLU()
+        )
 
         # set advantage layer
         self.policy_hidden_layer = nn.Linear(128, 128)
-        self.policy_layer = nn.Linear(128, out_dim)
+        self.policy_layer = nn.Linear(128, action_space.n)
 
         # set value layer
         self.value_hidden_layer = nn.Linear(128, 128)
@@ -28,7 +29,9 @@ class NoisyActorCritic(nn.Module):
 
     def act(self, x: np.ndarray) -> Dict[str, Union[torch.Tensor, np.ndarray]]:
         outp = self(x)
-        outp["action"] = Categorical(outp["action_distribution"]).sample()
+        outp["action"] = (
+            Categorical(outp["action_distribution"]).sample().detach().numpy()
+        )
         return outp
 
     def forward(self, x: np.ndarray) -> Dict[str, torch.Tensor]:
@@ -38,12 +41,21 @@ class NoisyActorCritic(nn.Module):
         policy_hid = F.relu(self.policy_hidden_layer(feature))
         val_hid = F.relu(self.value_hidden_layer(feature))
 
-        actions = F.softmax(self.policy_layer(feature), dim=-1)
-        value = self.value_layer(feature)
+        actions = F.softmax(self.policy_layer(policy_hid), dim=-1)
+        value = self.value_layer(val_hid)
 
         return {"action_distribution": actions, "values": value}
 
+    def __call__(self, *args):
+        return nn.Module.__call__(self, *args)
+
     def reset_noise(self):
         for module in self.modules():
-            if hasattr(module, "reset_noise") and not module is self:
+            if hasattr(module, "reset_noise") and module is not self:
                 module.reset_noise()
+
+    def save(self, path: str):
+        torch.save(self.state_dict(), path)
+
+    def load(self, path: str):
+        self.load_state_dict(torch.load(path))

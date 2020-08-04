@@ -1,3 +1,4 @@
+import logging
 import gym
 import importlib
 import os
@@ -14,8 +15,9 @@ def train_agent(run_params):
         run_params(dict) Dictionary from parsed configuration file
     """
     env = build_env(run_params)
-    agent = build_agent(run_params, env)
-    loop = build_loop(run_params, agent, env)
+    policy = build_policy(run_params, env)
+    agent = build_agent(run_params, policy, env)
+    loop = build_loop(run_params, agent, policy, env)
 
     loop.train()
 
@@ -27,8 +29,9 @@ def eval_agent(run_params):
         run_params(dict) Dictionary from parsed configuration file
     """
     env = build_env(run_params)
-    agent = build_agent(run_params, env)
-    loop = build_loop(run_params, agent, env)
+    policy = build_policy(run_params, env)
+    agent = build_agent(run_params, policy, env)
+    loop = build_loop(run_params, agent, policy, env)
 
     loop.evaluate()
 
@@ -47,7 +50,24 @@ def build_env(params):
     return env
 
 
-def build_agent(params, env):
+def build_policy(params, env):
+    if "policy" not in params:
+        logging.warn(
+            "No policy found in parameters, using default policy for the agent"
+        )
+        return None
+
+    policy_class_string = params["policy"]["class"]
+    policy_params = params["policy"]["parameters"]
+
+    policy_params["observation_space"] = env.observation_space
+    policy_params["action_space"] = env.action_space
+
+    Policy = module_str_to_class(policy_class_string)
+    return Policy(**policy_params)
+
+
+def build_agent(params, policy, env):
     """Create agent from run parameters"""
     agent_params = params["agent"]["parameters"]
     agent_class_string = params["agent"]["class"]
@@ -56,27 +76,26 @@ def build_agent(params, env):
     agent_params["observation_space"] = env.observation_space
     agent_params["action_space"] = env.action_space
 
-    if "policy" in params["agent"]:
-        policy_class_string = params["agent"]["policy"]["class"]
-        policy_params = params["agent"]["policy"]["parameters"]
-    else:
+    if policy is None:
         p = Agent.get_default_policy()
         policy_class_string = p["class"]
         policy_params = p["parameters"]
-
-    Policy = module_str_to_class(policy_class_string)
-    agent_params["Policy"] = Policy
-    agent_params["policy_parameters"] = policy_params
+        Policy = module_str_to_class(policy_class_string)
+        policy_params["observation_space"] = env.observation_space
+        policy_params["action_space"] = env.action_space
+        policy = Policy(**policy_params)
+    agent_params["policy"] = policy
     return Agent(**agent_params)
 
 
-def build_loop(params, agent, env):
+def build_loop(params, agent, policy, env):
     """Create loop from run parameters"""
     loop_params = params["loop"]["parameters"]
     loop_class_string = params["loop"]["class"]
     Loop = module_str_to_class(loop_class_string)
     loop_params["env"] = env
     loop_params["agent"] = agent
+    loop_params["policy"] = policy
     return Loop(**loop_params)
 
 

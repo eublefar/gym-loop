@@ -1,14 +1,10 @@
 """Thanks to https://github.com/Curt-Park/rainbow-is-all-you-need"""
-from typing import Dict, List, Tuple
+from typing import Dict
 import numpy as np
 import torch
-from torch import nn, optim
+from torch import optim
 from torch.nn.utils import clip_grad_norm_
-import torch.nn.functional as F
-from torch.distributions.categorical import Categorical
-from torch.distributions.normal import Normal
 import logging
-import math
 from .base_agent import BaseAgent
 from .replay_buffers.per_buffer import PrioritizedReplayBuffer
 from .replay_buffers.replay_buffer import ReplayBuffer
@@ -241,4 +237,3 @@ class PytorchRainbowDqn(BaseAgent):
             "class": "gym_loop.policies.categorical_net:CategoricalNet",
             "parameters": {},
         }
-

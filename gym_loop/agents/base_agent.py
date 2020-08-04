@@ -48,6 +48,6 @@ class BaseAgent:
             dict: class string and parameters for the policy
         """
         return {
-            "class": "gym_loop.policies.noisy_actor_critic:NoisyActorCritic",
+            "class": "gym_loop.policies.base_policy:BasePolicy",
             "parameters": {},
         }
