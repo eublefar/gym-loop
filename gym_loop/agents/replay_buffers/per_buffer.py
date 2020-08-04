@@ -1,9 +1,9 @@
+from typing import Dict, List, Tuple
 from .segment_tree import MinSegmentTree, SumSegmentTree
 from .replay_buffer import ReplayBuffer
 import numpy as np
 import random
 import logging
-from typing import Deque, Dict, List, Tuple
 
 logging.basicConfig(level=logging.INFO)
 
@@ -22,7 +22,6 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     def __init__(
         self,
-        obs_dim: int,
         size: int,
         batch_size: int = 32,
         alpha: float = 0.6,
@@ -32,25 +31,30 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         """Initialization."""
         assert alpha >= 0
 
-        super(PrioritizedReplayBuffer, self).__init__(
-            obs_dim, size, batch_size, n_step, gamma
-        )
-        self.max_priority, self.tree_ptr = 1.0, 0
+        super(PrioritizedReplayBuffer, self).__init__(size, batch_size, n_step, gamma)
+        self.max_priority, self.tree_ptr = 1000.0, 0
         self.alpha = alpha
 
         # capacity must be positive and a power of 2.
         tree_capacity = 1
         while tree_capacity < self.max_size:
             tree_capacity *= 2
+        self.tree_capacity = tree_capacity
 
         self.sum_tree = SumSegmentTree(tree_capacity)
         self.min_tree = MinSegmentTree(tree_capacity)
 
     def store(
-        self, obs: np.ndarray, act: int, rew: float, next_obs: np.ndarray, done: bool
+        self,
+        obs: np.ndarray,
+        act: int,
+        rew: float,
+        next_obs: np.ndarray,
+        done: bool,
+        data: dict,
     ) -> Tuple[np.ndarray, np.ndarray, float, np.ndarray, bool]:
         """Store experience and priority."""
-        transition = super().store(obs, act, rew, next_obs, done)
+        transition = super().store(obs, act, rew, next_obs, done, data)
 
         if transition:
             self.sum_tree[self.tree_ptr] = self.max_priority ** self.alpha
@@ -61,7 +65,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
 
     def sample_batch(self, beta: float = 0.4) -> Dict[str, np.ndarray]:
         """Sample a batch of experiences."""
-        assert len(self) >= self.batch_size
+        # assert len(self) >= self.batch_size
         assert beta > 0
 
         indices = self._sample_proportional()
@@ -71,6 +75,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         acts = self.acts_buf[indices]
         rews = self.rews_buf[indices]
         done = self.done_buf[indices]
+        data = [self.data[idx] for idx in indices]
         weights = np.array([self._calculate_weight(i, beta) for i in indices])
 
         return dict(
@@ -81,6 +86,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             done=done,
             weights=weights,
             indices=indices,
+            data=data,
         )
 
     def update_priorities(self, indices: List[int], priorities: np.ndarray):
@@ -109,7 +115,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             idx = self.sum_tree.retrieve(upperbound)
             indices.append(idx)
 
-        return indices
+        return list(set(indices))
 
     def _calculate_weight(self, idx: int, beta: float):
         """Calculate the weight of the experience at idx."""
@@ -123,3 +129,10 @@ class PrioritizedReplayBuffer(ReplayBuffer):
         weight = weight / max_weight
 
         return weight
+
+    def empty(self):
+        super().empty()
+
+        self.max_priority, self.tree_ptr = 1000, 0
+        self.sum_tree = SumSegmentTree(self.tree_capacity)
+        self.min_tree = MinSegmentTree(self.tree_capacity)
