@@ -44,8 +44,8 @@ class PPO(BaseAgent):
         outp = self.policy.act(state)
         action_distr, value = outp["action_distribution"], outp["values"]
         action = outp["action"]
-        self.last_values[env_id] = value.detach().numpy()
-        self.last_action_dist[env_id] = action_distr.detach().data.numpy()
+        self.last_values[env_id] = value.cpu().detach().numpy()
+        self.last_action_dist[env_id] = action_distr.cpu().detach().data.numpy()
         return action
 
     def memorize(
