@@ -1,4 +1,4 @@
-from typing import Dict
+from typing import Dict, Tuple, List
 import numpy as np
 
 
@@ -9,7 +9,11 @@ class BaseAgent:
         self.__dict__.update(params)
 
     def act(self, state: np.ndarray, episode_num: int):
-        """Retrieves agent's action upon state"""
+        """Get agent's action upon state"""
+        raise NotImplementedError()
+
+    def batch_act(self, state_batch: np.ndarray, done_mask: np.ndarray):
+        """Act on bath of states"""
         raise NotImplementedError()
 
     def memorize(
@@ -21,6 +25,15 @@ class BaseAgent:
         ob: np.ndarray,
     ):
         """Called after environment steps on action, arguments are classic SARSA tuple"""
+        raise NotImplementedError()
+
+    def batch_memorize(
+        self,
+        batch_transitions: List[
+            Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray,]
+        ],
+    ):
+        """Called after batch_act"""
         raise NotImplementedError()
 
     def update(self, episode_num: int):

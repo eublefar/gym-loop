@@ -34,6 +34,13 @@ class NoisyActorCritic(BasePolicy, nn.Module):
         )
         return outp
 
+    def batch_act(self, x: np.ndarray) -> Dict[str, Union[torch.Tensor, np.ndarray]]:
+        outp = self(x)
+        outp["action"] = (
+            Categorical(outp["action_distribution"]).sample().detach().numpy()
+        )
+        return outp
+
     def forward(self, x: np.ndarray) -> Dict[str, torch.Tensor]:
         """Forward method implementation."""
         x = torch.FloatTensor(x)

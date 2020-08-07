@@ -28,6 +28,9 @@ class PPO(BaseAgent):
         self.last_values = [None] * self.n_envs
         self.last_action_dist = [None] * self.n_envs
 
+        self.last_values = None
+        self.last_action_dists = None
+
         self.uploaded = [False for i in range(self.n_envs)]
 
         self.policy_loss_sum = 0
@@ -47,6 +50,14 @@ class PPO(BaseAgent):
         self.last_values[env_id] = value.cpu().detach().numpy()
         self.last_action_dist[env_id] = action_distr.cpu().detach().data.numpy()
         return action
+
+    def batch_act(self, state_batch, mask):
+        outp = self.policy.batch_act(state_batch)
+        action_distrs, values = outp["action_distribution"], outp["values"]
+        actions = outp["actions"]
+        self.last_values = values.cpu().detach().numpy()
+        self.last_action_dists = action_distrs.cpu().detach().data.numpy()
+        return actions
 
     def memorize(
         self,
@@ -91,6 +102,49 @@ class PPO(BaseAgent):
                     print(values)
                     print(transition)
             buffer.clear()
+
+    def batch_memorize(self, transition_batch):
+        if self.last_values is None:
+            raise RuntimeError("No value stored from previous action")
+        last_values = self.last_values
+        self.last_values = None
+
+        if self.last_action_dists is None:
+            raise RuntimeError("No action distribution stored from previous action")
+        last_action_dists = self.last_action_dists
+        self.last_action_dists = None
+
+        for i, sards in enumerate(transition_batch):
+            buffer = self.buffers[i]
+            (last_ob, action, reward, done, ob) = sards
+            transition = (
+                last_ob,
+                action,
+                reward,
+                ob,
+                done,
+                last_values[i],
+                last_action_dists[i],
+            )
+            buffer.append(transition)
+            if len(buffer) and (len(buffer) % self.n_steps == 0) or done:
+                self.uploaded[env_id] = True
+                advantages, values = self._gae(np.asarray(buffer), self.lam)
+                for i, transition in enumerate(buffer):
+                    try:
+                        self.memory.store(
+                            *transition[:-2],
+                            data=dict(
+                                adv=advantages[i],
+                                value=values[i],
+                                action_dist=transition[-1],
+                            )
+                        )
+                    except IndexError:
+                        print(advantages)
+                        print(values)
+                        print(transition)
+                buffer.clear()
 
     def _gae(
         self, transitions: Deque[Tuple], lam: float = 1.0
@@ -164,23 +218,26 @@ class PPO(BaseAgent):
     def _compute_loss(self, samples: Dict) -> torch.Tensor:
         device = self.device  # for shortening the following lines
         state = samples["obs"]
-        action = torch.LongTensor(samples["acts"]).to(device)
+        action = torch.LongTensor(samples["acts"], device=self.get_device())
 
         values = torch.FloatTensor(
-            np.stack([record["value"] for record in samples["data"]])
-        ).to(device)
+            np.stack([record["value"] for record in samples["data"]]),
+            device=self.get_device(),
+        )
 
         advantages = torch.FloatTensor(
-            np.stack([record["adv"] for record in samples["data"]])
-        ).to(device)
+            np.stack([record["adv"] for record in samples["data"]]),
+            device=self.get_device(),
+        )
 
         self.advantages_num += 1
         self.advantages_sum += advantages.mean()
         advantages = (advantages - advantages.mean()) / advantages.std()
 
         action_dist = torch.FloatTensor(
-            np.stack([record["action_dist"] for record in samples["data"]])
-        ).to(device)
+            np.stack([record["action_dist"] for record in samples["data"]]),
+            device=self.get_device(),
+        )
 
         outp = self.policy(state)
         action_dist_new, value_pred = outp["action_distribution"], outp["values"]

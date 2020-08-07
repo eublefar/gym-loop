@@ -10,6 +10,10 @@ class BasePolicy:
         """Act on state"""
         raise NotImplementedError()
 
+    def batch_act(self, state: Union[np.ndarray, Dict, Any]) -> np.ndarray:
+        """Act on batch of state"""
+        raise NotImplementedError()
+
     def __call__(self, state_batch: Union[np.ndarray, Dict, Any]) -> Dict[str, Any]:
         """Batch prediction"""
         raise NotImplementedError()
