@@ -36,7 +36,7 @@ class NoisyActorCritic(BasePolicy, nn.Module):
 
     def batch_act(self, x: np.ndarray) -> Dict[str, Union[torch.Tensor, np.ndarray]]:
         outp = self(x)
-        outp["action"] = (
+        outp["actions"] = (
             Categorical(outp["action_distribution"]).sample().detach().numpy()
         )
         return outp

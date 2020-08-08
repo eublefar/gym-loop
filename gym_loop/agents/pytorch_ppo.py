@@ -28,7 +28,7 @@ class PPO(BaseAgent):
         self.last_values = [None] * self.n_envs
         self.last_action_dist = [None] * self.n_envs
 
-        self.last_values = None
+        self.last_values_batch = None
         self.last_action_dists = None
 
         self.uploaded = [False for i in range(self.n_envs)]
@@ -55,7 +55,7 @@ class PPO(BaseAgent):
         outp = self.policy.batch_act(state_batch)
         action_distrs, values = outp["action_distribution"], outp["values"]
         actions = outp["actions"]
-        self.last_values = values.cpu().detach().numpy()
+        self.last_values_batch = values.cpu().detach().numpy()
         self.last_action_dists = action_distrs.cpu().detach().data.numpy()
         return actions
 
@@ -104,18 +104,20 @@ class PPO(BaseAgent):
             buffer.clear()
 
     def batch_memorize(self, transition_batch):
-        if self.last_values is None:
+        if self.last_values_batch is None:
             raise RuntimeError("No value stored from previous action")
-        last_values = self.last_values
-        self.last_values = None
+        last_values = self.last_values_batch
+        self.last_values_batch = None
 
         if self.last_action_dists is None:
             raise RuntimeError("No action distribution stored from previous action")
         last_action_dists = self.last_action_dists
         self.last_action_dists = None
 
-        for i, sards in enumerate(transition_batch):
-            buffer = self.buffers[i]
+        for env_id, sards in enumerate(transition_batch):
+            if sards is None:
+                continue
+            buffer = self.buffers[env_id]
             (last_ob, action, reward, done, ob) = sards
             transition = (
                 last_ob,
@@ -123,11 +125,11 @@ class PPO(BaseAgent):
                 reward,
                 ob,
                 done,
-                last_values[i],
-                last_action_dists[i],
+                last_values[env_id],
+                last_action_dists[env_id],
             )
             buffer.append(transition)
-            if len(buffer) and (len(buffer) % self.n_steps == 0) or done:
+            if len(buffer) and ((len(buffer) % self.n_steps) == 0) or done:
                 self.uploaded[env_id] = True
                 advantages, values = self._gae(np.asarray(buffer), self.lam)
                 for i, transition in enumerate(buffer):
@@ -160,7 +162,7 @@ class PPO(BaseAgent):
             last_state = torch.FloatTensor(transitions[-1, 3].astype(np.float))
             outp = self.policy(last_state)
             last_v = outp["values"]
-            last_v = last_v.detach()
+            last_v = last_v.detach().squeeze()
 
         if lam == 1:
             gamma_pow = (
@@ -186,17 +188,18 @@ class PPO(BaseAgent):
             emp_values = []
             for value, reward in list(zip(values, rewards))[::-1]:
                 gae = gae * self.gamma * lam
-                gae = gae + reward + self.gamma * last_v - value
+                gae = gae + reward + self.gamma * last_v - value.squeeze()
                 last_v = value
                 emp_values.append(gae + value)
             emp_values = emp_values[::-1]
-            emp_values = torch.cat(emp_values).detach()
+            emp_values = torch.stack(emp_values).detach()
         advantages = emp_values - values.squeeze(-1)
         return advantages, emp_values
 
     def update(self, episode_num: int):
         """Called immediately after memorize"""
         if all(self.uploaded):
+            # print("All uploadedd")
             self.uploaded = [False for i in range(self.n_envs)]
             for k in range(self.epochs):
                 for samples in self.memory.sample_iterator():
@@ -218,16 +221,15 @@ class PPO(BaseAgent):
     def _compute_loss(self, samples: Dict) -> torch.Tensor:
         device = self.device  # for shortening the following lines
         state = samples["obs"]
-        action = torch.LongTensor(samples["acts"], device=self.get_device())
+        action = torch.LongTensor(samples["acts"], device=self.device)
 
         values = torch.FloatTensor(
             np.stack([record["value"] for record in samples["data"]]),
-            device=self.get_device(),
+            device=self.device,
         )
 
         advantages = torch.FloatTensor(
-            np.stack([record["adv"] for record in samples["data"]]),
-            device=self.get_device(),
+            np.stack([record["adv"] for record in samples["data"]]), device=self.device,
         )
 
         self.advantages_num += 1
@@ -236,7 +238,7 @@ class PPO(BaseAgent):
 
         action_dist = torch.FloatTensor(
             np.stack([record["action_dist"] for record in samples["data"]]),
-            device=self.get_device(),
+            device=self.device,
         )
 
         outp = self.policy(state)
@@ -270,26 +272,24 @@ class PPO(BaseAgent):
 
     def metrics(self, episode_num: int) -> Dict:
         """Returns dict with metrics to log in tensorboard"""
-        m = (
-            {
+        if self.policy_loss_num:
+            m = {
                 # "max_priority": self.memory.max_priority,
                 "value_loss": self.value_loss_sum / self.value_loss_num,
                 "value": self.values_sum / self.values_num,
                 "advantage": self.advantages_sum / self.advantages_num,
                 "policy_loss": self.policy_loss_sum / self.policy_loss_num,
             }
-            if self.policy_loss_num
-            # else {"max_priority": self.memory.max_priority}
-            else {}
-        )
-        self.policy_loss_sum = 0
-        self.policy_loss_num = 0
-        self.value_loss_sum = 0
-        self.value_loss_num = 0
-        self.advantages_sum = 0
-        self.advantages_num = 0
-        self.values_sum = 0
-        self.values_num = 0
+            self.policy_loss_sum = 0
+            self.policy_loss_num = 0
+            self.value_loss_sum = 0
+            self.value_loss_num = 0
+            self.advantages_sum = 0
+            self.advantages_num = 0
+            self.values_sum = 0
+            self.values_num = 0
+        else:
+            m = {}
         return m
 
     @staticmethod
@@ -317,3 +317,16 @@ class PPO(BaseAgent):
             "buffer_beta_min": 0.1,
             "buffer_beta_decay": 1 / 2000,
         }
+
+    @staticmethod
+    def get_default_policy() -> Dict:
+        """Specifies default policy to use with agent
+        
+        Returns:
+            dict: class string and parameters for the policy
+        """
+        return {
+            "class": "gym_loop.policies.noisy_actor_critic:NoisyActorCritic",
+            "parameters": {},
+        }
+
