@@ -113,21 +113,26 @@ class PPO(BaseAgent):
             raise RuntimeError("No action distribution stored from previous action")
         last_action_dists = self.last_action_dists
         self.last_action_dists = None
-
+        
         for env_id, sards in enumerate(transition_batch):
             if sards is None:
                 continue
-            buffer = self.buffers[env_id]
-            (last_ob, action, reward, done, ob) = sards
-            transition = (
-                last_ob,
-                action,
-                reward,
-                ob,
-                done,
-                last_values[env_id],
-                last_action_dists[env_id],
-            )
+            try:
+                buffer = self.buffers[env_id]
+                (last_ob, action, reward, done, ob) = sards
+                transition = (
+                    last_ob,
+                    action,
+                    reward,
+                    ob,
+                    done,
+                    last_values[env_id],
+                    last_action_dists[env_id],
+                )
+            except IndexError as e:
+                print(len(last_values))
+                print(len(transition_batch))
+                raise e
             buffer.append(transition)
             if len(buffer) and ((len(buffer) % self.n_steps) == 0) or done:
                 self.uploaded[env_id] = True
@@ -158,8 +163,13 @@ class PPO(BaseAgent):
         if transitions[-1, 4]:
             last_v = 0
         else:
-            # print("not done", len(transitions))
-            last_state = torch.FloatTensor(transitions[-1, 3].astype(np.float))
+            print("not done", len(transitions), transitions[-1, 4])
+            
+            try:
+                last_state = torch.FloatTensor(transitions[-1, 3].astype(np.float))
+            except AttributeError as e:
+                print(transitions[-1, 3])
+                raise e
             outp = self.policy(last_state)
             last_v = outp["values"]
             last_v = last_v.detach().squeeze()
@@ -221,16 +231,15 @@ class PPO(BaseAgent):
     def _compute_loss(self, samples: Dict) -> torch.Tensor:
         device = self.device  # for shortening the following lines
         state = samples["obs"]
-        action = torch.LongTensor(samples["acts"], device=self.device)
+        action = torch.LongTensor(samples["acts"]).to(self.device)
 
         values = torch.FloatTensor(
             np.stack([record["value"] for record in samples["data"]]),
-            device=self.device,
-        )
+        ).to(self.device)
 
         advantages = torch.FloatTensor(
-            np.stack([record["adv"] for record in samples["data"]]), device=self.device,
-        )
+            np.stack([record["adv"] for record in samples["data"]]),
+        ).to(self.device)
 
         self.advantages_num += 1
         self.advantages_sum += advantages.mean()
@@ -238,8 +247,7 @@ class PPO(BaseAgent):
 
         action_dist = torch.FloatTensor(
             np.stack([record["action_dist"] for record in samples["data"]]),
-            device=self.device,
-        )
+        ).to(self.device)
 
         outp = self.policy(state)
         action_dist_new, value_pred = outp["action_distribution"], outp["values"]
