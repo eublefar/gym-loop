@@ -8,6 +8,8 @@ import torch.nn.functional as F
 import logging
 from torch.distributions.categorical import Categorical
 from collections import deque
+from torch.cuda.amp import autocast, GradScaler
+
 
 logging.basicConfig(level=logging.INFO)
 
@@ -24,6 +26,8 @@ class PPO(BaseAgent):
         )
         self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr)
         self.buffers = [deque(maxlen=self.n_steps) for _ in range(self.n_envs)]
+        
+        self.scaler = GradScaler()
 
         self.last_values = [None] * self.n_envs
         self.last_action_dist = [None] * self.n_envs
@@ -208,17 +212,31 @@ class PPO(BaseAgent):
 
     def update(self, episode_num: int):
         """Called immediately after memorize"""
+        print("update")
         if all(self.uploaded):
-            # print("All uploadedd")
+            print("All uploadedd")
             self.uploaded = [False for i in range(self.n_envs)]
             for k in range(self.epochs):
                 for samples in self.memory.sample_iterator():
-                    elem_loss = self._compute_loss(samples)
-                    loss = torch.mean(elem_loss)
+                    iters = len(samples) // self.sub_batch_size + int(len(samples) % self.sub_batch_size != 0)
                     self.optimizer.zero_grad()
-                    loss.backward()
+                    for i in range(iters):
+                        upper = (i + 1) * self.sub_batch_size
+                        lower = i * self.sub_batch_size
+                        elem_loss = self._compute_loss(
+                            {
+                                sample_key: sample[lower:upper] 
+                                for sample_key, sample in samples.items()
+                            }
+                        )
+                        loss = torch.mean(elem_loss)
+                        self.scaler.scale(loss).backward()
+                        
+                    self.scaler.unscale_(self.optimizer)
                     clip_grad_norm_(self.policy.parameters(), 0.5)
-                    self.optimizer.step()
+
+                    self.scaler.step(self.optimizer)
+                    self.scaler.update()
                     self.policy.reset_noise()
             self.memory.empty()
             self.beta = max(
@@ -324,6 +342,7 @@ class PPO(BaseAgent):
             "buffer_beta_max": 0.9,
             "buffer_beta_min": 0.1,
             "buffer_beta_decay": 1 / 2000,
+            "sub_batch_size": 8,
         }
 
     @staticmethod
