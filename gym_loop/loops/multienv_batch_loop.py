@@ -48,12 +48,12 @@ class MultiEnvLoop(BaseLoop):
             self.policy.load(self.load_from)
         # random loop
         logging.info("Running random episodes {} times".format(self.random_episodes))
-        for i in range(self.random_episodes):
-            ob = self.env.reset()
-            for _ in range(self.max_episode_len):
-                ob, reward, done = self._step_random(ob, episode_num=i)
-                if done:
-                    break
+        # for i in range(self.random_episodes):
+        #     ob = self.env.reset()
+        #     for _ in range(self.max_episode_len):
+        #         ob, reward, done = self._step_random(ob, episode_num=i)
+        #         if done:
+        #             break
 
         if self.record:
             logging.info(
@@ -75,9 +75,9 @@ class MultiEnvLoop(BaseLoop):
             last_ob = deepcopy(ob)
 
             actions = self.agent.batch_act(ob, (1 - done))
+            if self.render:
+                self.envs[0].render()
             for env_id, env in enumerate(self.envs):
-                if env_id == 0 and self.render:
-                    self.envs[0].render()
                 if not done[env_id]:
                     ob[env_id], reward, done[env_id], _ = self.envs[env_id].step(
                         actions[env_id]

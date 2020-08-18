@@ -13,7 +13,7 @@ class ReplayBuffer:
         self.next_obs_buf = np.zeros([size], dtype=np.object)
         # self.obs_buf = np.zeros([size, obs_dim], dtype=np.float32)
         # self.next_obs_buf = np.zeros([size, obs_dim], dtype=np.float32)
-        self.acts_buf = np.zeros([size], dtype=np.float32)
+        self.acts_buf = np.zeros([size], dtype=np.object)
         self.rews_buf = np.zeros([size], dtype=np.float32)
         self.done_buf = np.zeros(size, dtype=np.float32)
         self.data = [{} for _ in range(size)]
