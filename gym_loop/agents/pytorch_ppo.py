@@ -57,16 +57,16 @@ class PPO(BaseAgent):
         action_distr, value = outp["action_distribution"], outp["values"]
         action = action_distr.sample()
         self.last_values[env_id] = value
-        self.last_action_logprobs[env_id] = action_distr.log_prob(action).squeeze()
-        return action.detach().numpy()
+        self.last_action_logprobs[env_id] = action_distr.log_prob(action).detach().squeeze()
+        return action.detach().cpu().numpy()
 
     def batch_act(self, state_batch, mask):
         outp = self.policy(state_batch)
         action_distrs, values = outp["action_distribution"], outp["values"]
         actions = action_distrs.sample()
-        self.last_values_batch = values
-        self.last_actions_logprobs = action_distrs.log_prob(actions).squeeze()
-        return actions.detach().numpy()
+        self.last_values_batch = values.detach()
+        self.last_actions_logprobs = action_distrs.log_prob(actions).detach().squeeze()
+        return actions.detach().cpu().numpy()
 
     def memorize(
         self,
@@ -113,7 +113,6 @@ class PPO(BaseAgent):
             raise RuntimeError("No action distribution stored from previous action")
         last_actions_logprobs = self.last_actions_logprobs
         self.last_actions_logprobs = None
-
         for env_id, sards in enumerate(transition_batch):
             if sards is None:
                 continue
@@ -261,7 +260,7 @@ class PPO(BaseAgent):
     def update_means(self, values: Dict[str, float]):
         for k, v in values.items():
             setattr(self, k + "_num", getattr(self, k + "_num") + 1)
-            setattr(self, k + "_sum", getattr(self, k + "_sum") + v.detach().numpy())
+            setattr(self, k + "_sum", getattr(self, k + "_sum") + v.cpu().detach().numpy())
 
     def metrics(self, episode_num: int) -> Dict:
         """Returns dict with metrics to log in tensorboard"""
