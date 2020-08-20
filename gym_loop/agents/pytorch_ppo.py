@@ -57,7 +57,9 @@ class PPO(BaseAgent):
         action_distr, value = outp["action_distribution"], outp["values"]
         action = action_distr.sample()
         self.last_values[env_id] = value
-        self.last_action_logprobs[env_id] = action_distr.log_prob(action).detach().squeeze()
+        self.last_action_logprobs[env_id] = (
+            action_distr.log_prob(action).detach().squeeze()
+        )
         return action.detach().cpu().numpy()
 
     def batch_act(self, state_batch, mask):
@@ -194,7 +196,7 @@ class PPO(BaseAgent):
                                 for sample_key, sample in samples.items()
                             }
                         )
-                        loss = torch.mean(elem_loss)/iters
+                        loss = torch.mean(elem_loss) / iters
                         if torch.cuda.is_available():
                             self.scaler.scale(loss).backward()
                         else:
@@ -203,7 +205,7 @@ class PPO(BaseAgent):
                     if torch.cuda.is_available():
                         self.scaler.unscale_(self.optimizer)
 
-                    clip_grad_norm_(self.policy.parameters(), 0.5)
+                    clip_grad_norm_(self.policy.parameters(), self.gradient_clip_norm)
 
                     if torch.cuda.is_available():
                         self.scaler.step(self.optimizer)
@@ -259,7 +261,9 @@ class PPO(BaseAgent):
     def update_means(self, values: Dict[str, float]):
         for k, v in values.items():
             setattr(self, k + "_num", getattr(self, k + "_num") + 1)
-            setattr(self, k + "_sum", getattr(self, k + "_sum") + v.cpu().detach().numpy())
+            setattr(
+                self, k + "_sum", getattr(self, k + "_sum") + v.cpu().detach().numpy()
+            )
 
     def metrics(self, episode_num: int) -> Dict:
         """Returns dict with metrics to log in tensorboard"""
@@ -307,6 +311,7 @@ class PPO(BaseAgent):
             "batch_size": 32,
             "prior_eps": 1e-8,
             "sub_batch_size": 8,
+            "gradient_clip_norm": 0.5,
         }
 
     @staticmethod
