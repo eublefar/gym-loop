@@ -194,7 +194,7 @@ class PPO(BaseAgent):
                                 for sample_key, sample in samples.items()
                             }
                         )
-                        loss = torch.mean(elem_loss)
+                        loss = torch.mean(elem_loss)/iters
                         if torch.cuda.is_available():
                             self.scaler.scale(loss).backward()
                         else:
@@ -250,7 +250,6 @@ class PPO(BaseAgent):
                 "entropy": action_dist_new.entropy().mean(),
             }
         )
-
         return (
             policy_loss
             + self.value_loss_coef * value_loss.squeeze()
