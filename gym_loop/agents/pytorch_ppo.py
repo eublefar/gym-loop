@@ -40,6 +40,8 @@ class PPO(BaseAgent):
 
         self.uploaded = [False for i in range(self.n_envs)]
 
+        self.grad_norm_sum = 0
+        self.grad_norm_num = 0
         self.policy_loss_sum = 0
         self.policy_loss_num = 0
         self.value_loss_sum = 0
@@ -204,7 +206,12 @@ class PPO(BaseAgent):
 
                     if torch.cuda.is_available():
                         self.scaler.unscale_(self.optimizer)
-
+                    total_norm = 0
+                    for p in self.policy.parameters():
+                        param_norm = p.grad.data.norm(2)
+                        total_norm += param_norm.item() ** 2
+                    total_norm = total_norm ** (1.0 / 2)
+                    self.update_means({"grad_norm": total_norm})
                     clip_grad_norm_(self.policy.parameters(), self.gradient_clip_norm)
 
                     if torch.cuda.is_available():
@@ -245,11 +252,11 @@ class PPO(BaseAgent):
 
         self.update_means(
             {
-                "advantages": adv_mean,
-                "policy_loss": policy_loss.mean(),
-                "value_loss": value_loss.mean(),
-                "values": value_pred.mean(),
-                "entropy": action_dist_new.entropy().mean(),
+                "advantages": adv_mean.cpu().detach().numpy(),
+                "policy_loss": policy_loss.mean().cpu().detach().numpy(),
+                "value_loss": value_loss.mean().cpu().detach().numpy(),
+                "values": value_pred.mean().cpu().detach().numpy(),
+                "entropy": action_dist_new.entropy().mean().cpu().detach().numpy(),
             }
         )
         return (
@@ -261,9 +268,7 @@ class PPO(BaseAgent):
     def update_means(self, values: Dict[str, float]):
         for k, v in values.items():
             setattr(self, k + "_num", getattr(self, k + "_num") + 1)
-            setattr(
-                self, k + "_sum", getattr(self, k + "_sum") + v.cpu().detach().numpy()
-            )
+            setattr(self, k + "_sum", getattr(self, k + "_sum") + v)
 
     def metrics(self, episode_num: int) -> Dict:
         """Returns dict with metrics to log in tensorboard"""
@@ -275,6 +280,7 @@ class PPO(BaseAgent):
                 "advantage": self.advantages_sum / self.advantages_num,
                 "policy_loss": self.policy_loss_sum / self.policy_loss_num,
                 "entropy": self.entropy_sum / self.entropy_num,
+                "grad_norm": self.grad_norm_sum / self.grad_norm_num,
             }
             self.policy_loss_sum = 0
             self.policy_loss_num = 0
@@ -286,6 +292,8 @@ class PPO(BaseAgent):
             self.values_num = 0
             self.entropy_sum = 0
             self.entropy_num = 0
+            self.grad_norm_sum = 0
+            self.grad_norm_num = 0
         else:
             m = {}
         return m
