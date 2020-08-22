@@ -62,15 +62,15 @@ class PPO(BaseAgent):
         self.last_action_logprobs[env_id] = (
             action_distr.log_prob(action).detach().squeeze().cpu().pin_memory()
         )
-        return action.detach().cpu().pin_memory()
+        return action.detach()
 
     def batch_act(self, state_batch, mask):
         outp = self.policy(state_batch)
         action_distrs, values = outp["action_distribution"], outp["values"]
         actions = action_distrs.sample()
-        self.last_values_batch = values.detach()
-        self.last_actions_logprobs = action_distrs.log_prob(actions).detach().squeeze()
-        return actions.detach().cpu().numpy()
+        self.last_values_batch = values.detach().cpu().pin_memory()
+        self.last_actions_logprobs = action_distrs.log_prob(actions).detach().squeeze().cpu().pin_memory()
+        return actions.detach().cpu().pin_memory()
 
     def memorize(
         self,
