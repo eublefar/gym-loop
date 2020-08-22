@@ -58,11 +58,11 @@ class PPO(BaseAgent):
         outp = self.policy(state)
         action_distr, value = outp["action_distribution"], outp["values"]
         action = action_distr.sample()
-        self.last_values[env_id] = value
+        self.last_values[env_id] = value.cpu().pin_memory()
         self.last_action_logprobs[env_id] = (
-            action_distr.log_prob(action).detach().squeeze()
+            action_distr.log_prob(action).detach().squeeze().cpu().pin_memory()
         )
-        return action.detach().cpu().numpy()
+        return action.detach().cpu().pin_memory()
 
     def batch_act(self, state_batch, mask):
         outp = self.policy(state_batch)
@@ -225,12 +225,17 @@ class PPO(BaseAgent):
     def _compute_loss(self, samples: Dict) -> torch.Tensor:
 
         state = samples["obs"]
-        action = torch.FloatTensor(np.stack(samples["acts"])).to(self.device)
-        values = torch.stack([record["value"] for record in samples["data"]]).detach()
+        action = torch.stack(samples["acts"]).to(self.device, non_blocking=True)
+        values = (
+            torch.stack([record["value"] for record in samples["data"]])
+            .detach()
+            .to(self.device, non_blocking=True)
+        )
         advantages = (
             torch.stack([record["adv"] for record in samples["data"]])
             .detach()
             .squeeze(-1)
+            .to(self.device, non_blocking=True)
         )
 
         adv_mean = advantages.mean()
@@ -253,10 +258,10 @@ class PPO(BaseAgent):
         self.update_means(
             {
                 "advantages": adv_mean.cpu().detach().numpy(),
-                "policy_loss": policy_loss.mean().cpu().detach().numpy(),
-                "value_loss": value_loss.mean().cpu().detach().numpy(),
-                "values": value_pred.mean().cpu().detach().numpy(),
-                "entropy": action_dist_new.entropy().mean().cpu().detach().numpy(),
+                "policy_loss": policy_loss.cpu().mean().detach().numpy(),
+                "value_loss": value_loss.cpu().mean().detach().numpy(),
+                "values": value_pred.cpu().mean().detach().numpy(),
+                "entropy": action_dist_new.entropy().cpu().mean().detach().numpy(),
             }
         )
         return (
