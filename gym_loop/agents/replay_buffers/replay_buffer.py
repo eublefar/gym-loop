@@ -1,5 +1,6 @@
 import numpy as np
 from typing import Dict, Tuple, Iterable
+from copy import deepcopy
 
 
 class ReplayBuffer:
@@ -87,10 +88,10 @@ class ReplayBuffer:
         return self.size
 
     def empty(self):
-        self.obs_buf[:] = 0
-        self.next_obs_buf[:] = 0
-        self.acts_buf[:] = 0
-        self.rews_buf[:] = 0
-        self.done_buf[:] = 0
+        self.obs_buf = np.zeros([self.max_size], dtype=np.object)
+        self.next_obs_buf = np.zeros([self.max_size], dtype=np.object)
+        self.acts_buf = np.zeros([self.max_size], dtype=np.object)
+        self.rews_buf = np.zeros([self.max_size], dtype=np.float32)
+        self.done_buf = np.zeros(self.max_size, dtype=np.float32)
         self.data = [{} for _ in range(self.max_size)]
         self.ptr, self.size, = 0, 0

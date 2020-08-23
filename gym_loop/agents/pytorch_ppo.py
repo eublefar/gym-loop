@@ -69,7 +69,9 @@ class PPO(BaseAgent):
         action_distrs, values = outp["action_distribution"], outp["values"]
         actions = action_distrs.sample()
         self.last_values_batch = values.detach().cpu().pin_memory()
-        self.last_actions_logprobs = action_distrs.log_prob(actions).detach().squeeze().cpu().pin_memory()
+        self.last_actions_logprobs = (
+            action_distrs.log_prob(actions).detach().squeeze().cpu()
+        ).pin_memory()
         return actions.detach().cpu().pin_memory()
 
     def memorize(
@@ -225,7 +227,9 @@ class PPO(BaseAgent):
     def _compute_loss(self, samples: Dict) -> torch.Tensor:
 
         state = samples["obs"]
-        action = torch.stack(samples["acts"]).to(self.device, non_blocking=True)
+        action = torch.stack(samples["acts"].tolist()).to(
+            self.device, non_blocking=True
+        )
         values = (
             torch.stack([record["value"] for record in samples["data"]])
             .detach()
