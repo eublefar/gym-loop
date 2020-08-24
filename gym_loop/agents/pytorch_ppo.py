@@ -62,7 +62,7 @@ class PPO(BaseAgent):
         action = action_distr.sample()
         self.last_values[env_id] = value.cpu().pin_memory()
         self.last_action_logprobs[env_id] = (
-            action_distr.log_prob(action).detach().squeeze().cpu().pin_memory()
+            action_distr.log_prob(action).detach().squeeze().to('cpu', non_blocking=True)
         )
         return action.detach()
 
@@ -70,12 +70,12 @@ class PPO(BaseAgent):
         outp = self.policy(state_batch)
         action_distrs, values = outp["action_distribution"], outp["values"]
         actions = action_distrs.sample()
-        self.last_values_batch = values.detach()
+        self.last_values_batch = values.detach().cpu().pin_memory()
         self.last_actions_logprobs = (
-            action_distrs.log_prob(actions).detach().squeeze()
+            action_distrs.log_prob(actions).detach().squeeze().cpu().pin_memory()
         )
         return actions.detach()
-
+    
     def memorize(
         self,
         last_ob: Any,
@@ -211,11 +211,12 @@ class PPO(BaseAgent):
                     if torch.cuda.is_available():
                         self.scaler.unscale_(self.optimizer)
                     total_norm = 0
-                    for p in self.policy.parameters():
-                        param_norm = p.grad.data.norm(2)
-                        total_norm += param_norm.item() ** 2
-                    total_norm = total_norm ** (1.0 / 2)
-                    self.update_means({"grad_norm": total_norm})
+                    with torch.no_grad():
+                        for p in self.policy.parameters():
+                            param_norm = p.grad.data.norm(2)
+                            total_norm += param_norm.item() ** 2
+                        total_norm = total_norm ** (1.0 / 2)
+                        self.update_means({"grad_norm": total_norm})
                     clip_grad_norm_(self.policy.parameters(), self.gradient_clip_norm)
 
                     if torch.cuda.is_available():
@@ -249,7 +250,9 @@ class PPO(BaseAgent):
 
         old_logprobs = torch.stack(
             [record["action_logprob"] for record in samples["data"]],
-        ).detach()
+        ).detach().to(
+            self.device, non_blocking=True
+        )
         outp = self.policy(state)
         action_dist_new, value_pred = outp["action_distribution"], outp["values"]
         with autocast() if MIXED_PREC else suppress():

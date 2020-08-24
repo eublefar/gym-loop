@@ -1,7 +1,7 @@
 import numpy as np
 from typing import Dict, Tuple, Iterable
 from copy import deepcopy
-
+import gc
 
 class ReplayBuffer:
 
@@ -94,4 +94,5 @@ class ReplayBuffer:
         self.rews_buf = np.zeros([self.max_size], dtype=np.float32)
         self.done_buf = np.zeros(self.max_size, dtype=np.float32)
         self.data = [{} for _ in range(self.max_size)]
+        gc.collect()
         self.ptr, self.size, = 0, 0
