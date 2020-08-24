@@ -7,13 +7,15 @@ from torch.nn.utils import clip_grad_norm_
 import torch.nn.functional as F
 import logging
 from torch.distributions.categorical import Categorical
+from contextlib import suppress
 from collections import deque
 
 try:
     from torch.cuda.amp import autocast, GradScaler
+    MIXED_PREC = True
 except ImportError:
     print("Mixed precision training is not available")
-
+    MIXED_PREC = False
 logging.basicConfig(level=logging.INFO)
 
 
@@ -250,14 +252,15 @@ class PPO(BaseAgent):
         ).detach()
         outp = self.policy(state)
         action_dist_new, value_pred = outp["action_distribution"], outp["values"]
-        value_loss = F.smooth_l1_loss(value_pred, values, reduction="none")
-        new_logprobs = action_dist_new.log_prob(action)
-        ratios = torch.exp(new_logprobs - old_logprobs)
-        policy_gain = ratios * advantages
-        policy_gain_clipped = (
-            torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
-        )
-        policy_loss = -torch.min(policy_gain, policy_gain_clipped)
+        with autocast() if MIXED_PREC else suppress():
+            value_loss = F.smooth_l1_loss(value_pred, values, reduction="none")            
+            new_logprobs = action_dist_new.log_prob(action)
+            ratios = torch.exp(new_logprobs - old_logprobs)
+            policy_gain = ratios * advantages
+            policy_gain_clipped = (
+                torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
+            )
+            policy_loss = -torch.min(policy_gain, policy_gain_clipped)
 
         self.update_means(
             {
