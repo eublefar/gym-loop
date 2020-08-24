@@ -190,7 +190,7 @@ class PPO(BaseAgent):
             for k in range(self.epochs):
                 for samples in self.memory.sample_iterator():
                     iters = len(samples) // self.sub_batch_size + int(
-                        len(samples) % self.sub_batch_size != 0
+                        (len(samples) % self.sub_batch_size) != 0
                     )
                     self.optimizer.zero_grad()
                     for i in range(iters):
@@ -207,6 +207,7 @@ class PPO(BaseAgent):
                             self.scaler.scale(loss).backward()
                         else:
                             loss.backward()
+                        del loss, elem_loss
 
                     if torch.cuda.is_available():
                         self.scaler.unscale_(self.optimizer)
@@ -216,7 +217,8 @@ class PPO(BaseAgent):
                             param_norm = p.grad.data.norm(2)
                             total_norm += param_norm.item() ** 2
                         total_norm = total_norm ** (1.0 / 2)
-                        self.update_means({"grad_norm": total_norm})
+                        if total_norm == total_norm:
+                            self.update_means({"grad_norm": total_norm})
                     clip_grad_norm_(self.policy.parameters(), self.gradient_clip_norm)
 
                     if torch.cuda.is_available():
@@ -256,7 +258,7 @@ class PPO(BaseAgent):
         outp = self.policy(state)
         action_dist_new, value_pred = outp["action_distribution"], outp["values"]
         with autocast() if MIXED_PREC else suppress():
-            value_loss = F.smooth_l1_loss(value_pred, values, reduction="none")            
+            value_loss = F.smooth_l1_loss(value_pred, values, reduction="none")   
             new_logprobs = action_dist_new.log_prob(action)
             ratios = torch.exp(new_logprobs - old_logprobs)
             policy_gain = ratios * advantages
@@ -264,7 +266,7 @@ class PPO(BaseAgent):
                 torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
             )
             policy_loss = -torch.min(policy_gain, policy_gain_clipped)
-
+            
         self.update_means(
             {
                 "advantages": adv_mean.cpu().detach().numpy(),
@@ -295,7 +297,7 @@ class PPO(BaseAgent):
                 "advantage": self.advantages_sum / self.advantages_num,
                 "policy_loss": self.policy_loss_sum / self.policy_loss_num,
                 "entropy": self.entropy_sum / self.entropy_num,
-                "grad_norm": self.grad_norm_sum / self.grad_norm_num,
+                "grad_norm": self.grad_norm_sum / self.grad_norm_num if self.grad_norm_num != 0 else 0,
             }
             self.policy_loss_sum = 0
             self.policy_loss_num = 0
