@@ -12,6 +12,7 @@ from collections import deque
 
 try:
     from torch.cuda.amp import autocast, GradScaler
+
     MIXED_PREC = True
 except ImportError:
     print("Mixed precision training is not available")
@@ -62,7 +63,10 @@ class PPO(BaseAgent):
         action = action_distr.sample()
         self.last_values[env_id] = value.cpu().pin_memory()
         self.last_action_logprobs[env_id] = (
-            action_distr.log_prob(action).detach().squeeze().to('cpu', non_blocking=True)
+            action_distr.log_prob(action)
+            .detach()
+            .squeeze()
+            .to("cpu", non_blocking=True)
         )
         return action.detach()
 
@@ -75,7 +79,7 @@ class PPO(BaseAgent):
             action_distrs.log_prob(actions).detach().squeeze().cpu().pin_memory()
         )
         return actions.detach()
-    
+
     def memorize(
         self,
         last_ob: Any,
@@ -214,7 +218,7 @@ class PPO(BaseAgent):
                     total_norm = 0
                     with torch.no_grad():
                         for p in self.policy.parameters():
-                            param_norm = p.grad.data.norm(2)
+                            param_norm = p.grad.data.norm(2).cpu()
                             total_norm += param_norm.item() ** 2
                         total_norm = total_norm ** (1.0 / 2)
                         if total_norm == total_norm:
@@ -235,14 +239,11 @@ class PPO(BaseAgent):
         action = torch.stack(samples["acts"].tolist()).to(
             self.device, non_blocking=True
         )
-        values = (
-            torch.stack([record["value"] for record in samples["data"]])
-            .detach()
-            .to(self.device, non_blocking=True)
+        values = torch.stack([record["value"] for record in samples["data"]]).to(
+            self.device, non_blocking=True
         )
         advantages = (
             torch.stack([record["adv"] for record in samples["data"]])
-            .detach()
             .squeeze(-1)
             .to(self.device, non_blocking=True)
         )
@@ -252,13 +253,11 @@ class PPO(BaseAgent):
 
         old_logprobs = torch.stack(
             [record["action_logprob"] for record in samples["data"]],
-        ).detach().to(
-            self.device, non_blocking=True
-        )
+        ).to(self.device, non_blocking=True)
         outp = self.policy(state)
         action_dist_new, value_pred = outp["action_distribution"], outp["values"]
         with autocast() if MIXED_PREC else suppress():
-            value_loss = F.smooth_l1_loss(value_pred, values, reduction="none")   
+            value_loss = F.smooth_l1_loss(value_pred, values, reduction="none")
             new_logprobs = action_dist_new.log_prob(action)
             ratios = torch.exp(new_logprobs - old_logprobs)
             policy_gain = ratios * advantages
@@ -266,7 +265,7 @@ class PPO(BaseAgent):
                 torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip) * advantages
             )
             policy_loss = -torch.min(policy_gain, policy_gain_clipped)
-            
+
         self.update_means(
             {
                 "advantages": adv_mean.cpu().detach().numpy(),
@@ -297,7 +296,9 @@ class PPO(BaseAgent):
                 "advantage": self.advantages_sum / self.advantages_num,
                 "policy_loss": self.policy_loss_sum / self.policy_loss_num,
                 "entropy": self.entropy_sum / self.entropy_num,
-                "grad_norm": self.grad_norm_sum / self.grad_norm_num if self.grad_norm_num != 0 else 0,
+                "grad_norm": self.grad_norm_sum / self.grad_norm_num
+                if self.grad_norm_num != 0
+                else 0,
             }
             self.policy_loss_sum = 0
             self.policy_loss_num = 0
