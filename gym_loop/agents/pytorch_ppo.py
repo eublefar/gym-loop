@@ -29,7 +29,7 @@ class PPO(BaseAgent):
         self.memory = ReplayBuffer(
             size=self.n_steps * self.n_envs * 2, batch_size=self.batch_size
         )
-        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr)
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr, eps=1e-14)
         self.buffers = [deque(maxlen=self.n_steps) for _ in range(self.n_envs)]
 
         if torch.cuda.is_available():
@@ -216,6 +216,10 @@ class PPO(BaseAgent):
                     if torch.cuda.is_available():
                         self.scaler.unscale_(self.optimizer)
                     total_norm = 0
+                    clip_grad_norm_(self.policy.parameters(), self.gradient_clip_norm)
+                    
+#                     for p in self.policy.parameters():
+#                         p.grad.data.clamp_(min=-0.5, max=0.5)
                     with torch.no_grad():
                         for p in self.policy.parameters():
                             param_norm = p.grad.data.norm(2).cpu()
@@ -223,7 +227,6 @@ class PPO(BaseAgent):
                         total_norm = total_norm ** (1.0 / 2)
                         if total_norm == total_norm:
                             self.update_means({"grad_norm": total_norm})
-                    clip_grad_norm_(self.policy.parameters(), self.gradient_clip_norm)
 
                     if torch.cuda.is_available():
                         self.scaler.step(self.optimizer)
