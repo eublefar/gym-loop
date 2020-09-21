@@ -29,7 +29,9 @@ class PPO(BaseAgent):
         self.memory = ReplayBuffer(
             size=self.n_steps * self.n_envs * 2, batch_size=self.batch_size
         )
-        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr, eps=1e-14)
+        self.optimizer = torch.optim.Adam(
+            self.policy.parameters(), lr=self.lr, eps=1e-14
+        )
         self.buffers = [deque(maxlen=self.n_steps) for _ in range(self.n_envs)]
 
         if torch.cuda.is_available():
@@ -70,13 +72,16 @@ class PPO(BaseAgent):
         )
         return action.detach()
 
-    def batch_act(self, state_batch, mask):
+    def batch_act(self, state_batch, mask, log_prob_override=None):
         outp = self.policy(state_batch)
         action_distrs, values = outp["action_distribution"], outp["values"]
         actions = action_distrs.sample()
         self.last_values_batch = values.detach().cpu().pin_memory()
+
         self.last_actions_logprobs = (
             action_distrs.log_prob(actions).detach().squeeze().cpu().pin_memory()
+            if log_prob_override is None
+            else log_prob_override
         )
         return actions.detach()
 
@@ -217,9 +222,9 @@ class PPO(BaseAgent):
                         self.scaler.unscale_(self.optimizer)
                     total_norm = 0
                     clip_grad_norm_(self.policy.parameters(), self.gradient_clip_norm)
-                    
-#                     for p in self.policy.parameters():
-#                         p.grad.data.clamp_(min=-0.5, max=0.5)
+
+                    #                     for p in self.policy.parameters():
+                    #                         p.grad.data.clamp_(min=-0.5, max=0.5)
                     with torch.no_grad():
                         for p in self.policy.parameters():
                             param_norm = p.grad.data.norm(2).cpu()
@@ -261,6 +266,7 @@ class PPO(BaseAgent):
         action_dist_new, value_pred = outp["action_distribution"], outp["values"]
         with autocast() if MIXED_PREC else suppress():
             value_loss = F.smooth_l1_loss(value_pred, values, reduction="none")
+
             new_logprobs = action_dist_new.log_prob(action)
             ratios = torch.exp(new_logprobs - old_logprobs)
             policy_gain = ratios * advantages
