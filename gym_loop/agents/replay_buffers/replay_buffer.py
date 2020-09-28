@@ -58,11 +58,13 @@ class ReplayBuffer:
         )
 
     def sample_iterator(self) -> Iterable[Dict[str, np.ndarray]]:
-        ids = np.arange(self.size - (self.size % self.batch_size))
+        iters = (self.size // self.batch_size) + int(bool(self.size % self.batch_size))
+        ids = np.arange(self.size)
         ids = np.random.permutation(ids)
-        ids = ids.reshape([-1, self.batch_size])
-
-        for idxs in ids:
+        for i in range(iters):
+            upper = (i + 1) * self.batch_size
+            lower = i * self.batch_size
+            idxs = ids[lower:upper]
             yield dict(
                 obs=np.stack(list(self.obs_buf[idxs])),
                 next_obs=np.stack(list(self.next_obs_buf[idxs])),
