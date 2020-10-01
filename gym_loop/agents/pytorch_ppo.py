@@ -128,6 +128,12 @@ class PPO(BaseAgent):
             self._upload_transitions(env_id)
 
     def batch_memorize(self, transition_batch):
+        if len(transition_batch) != self.n_envs:
+            raise RuntimeError(
+                "Batch size %d does not match number of envs %d"
+                % (len(transition_batch), self.n_envs)
+            )
+
         if self.last_values_batch is None:
             raise RuntimeError("No value stored from previous action")
         last_values = self.last_values_batch
@@ -137,12 +143,12 @@ class PPO(BaseAgent):
             raise RuntimeError("No action distribution stored from previous action")
         last_actions_logprobs = self.last_actions_logprobs
         self.last_actions_logprobs = None
-        
+
         if self.last_actions_probs is None:
             raise RuntimeError("No action distribution stored from previous action")
         last_actions_probs = self.last_actions_probs
         self.last_actions_probs = None
-        
+
         for env_id, sards in enumerate(transition_batch):
             if sards is None:
                 continue
@@ -156,7 +162,7 @@ class PPO(BaseAgent):
                 done,
                 last_values[env_id],
                 last_actions_logprobs[env_id],
-                last_actions_probs[env_id, :]
+                last_actions_probs[env_id, :],
             )
 
             buffer.append(transition)
@@ -174,7 +180,7 @@ class PPO(BaseAgent):
                     adv=advantages[i],
                     value=values[i],
                     action_logprob=transition[-2],
-                    action_prob=transition[-1]
+                    action_prob=transition[-1],
                 )
             )
         buffer.clear()
@@ -189,13 +195,13 @@ class PPO(BaseAgent):
             print("new_logprobs")
         # (batch_size, 1)
         values = torch.stack(transitions[:, 5].tolist())
-#         if transitions[-1, 4]:
+        #         if transitions[-1, 4]:
         last_v = 0
-#         else:
-#             last_state = torch.FloatTensor(transitions[-1, 3].astype(np.float))
-#             outp = self.policy(last_state)
-#             last_v = outp["values"]
-#             last_v = last_v.detach().squeeze()
+        #         else:
+        #             last_state = torch.FloatTensor(transitions[-1, 3].astype(np.float))
+        #             outp = self.policy(last_state)
+        #             last_v = outp["values"]
+        #             last_v = last_v.detach().squeeze()
 
         gae = 0
         emp_values = []
@@ -214,36 +220,27 @@ class PPO(BaseAgent):
         """Called immediately after memorize"""
         if all(self.uploaded):
             print("All uploadedd")
-            kl_approx = 0
             self.uploaded = [False for i in range(self.n_envs)]
             for k in range(self.epochs):
                 for epoch_step, samples in enumerate(self.memory.sample_iterator()):
-                    print(epoch_step)
+                    print("epoch", epoch_step)
                     iters = len(samples) // self.sub_batch_size + int(
                         (len(samples) % self.sub_batch_size) != 0
                     )
-                    if kl_approx == 0:
-                        pass
-                    elif (kl_approx/iters) >= (1.5 * self.target_kl):
-                        self.beta *= 2
-                    elif (kl_approx/iters) <= (self.target_kl/1.5):
-                        self.beta /= 2
-                    kl_approx = 0
                     self.optimizer.zero_grad()
                     for i in range(iters):
-                        print(i)
+                        print("iter", i)
                         upper = (i + 1) * self.sub_batch_size
                         lower = i * self.sub_batch_size
                         try:
-                            elem_loss, kl = self._compute_loss(
+                            elem_loss = self._compute_loss(
                                 {
                                     sample_key: sample[lower:upper]
                                     for sample_key, sample in samples.items()
                                 }
                             )
-                            # TODO: Update beta to self.target_kl
-                            kl_approx += kl
                             loss = torch.mean(elem_loss) / iters
+                            print(MIXED_PREC)
                             if MIXED_PREC:
                                 self.scaler.scale(loss).backward()
                             else:
@@ -252,18 +249,22 @@ class PPO(BaseAgent):
                         except RuntimeError as e:
                             print(e)
                             print(
-                                "lower %d, upper %d, samples length %d, iters %d"%(
-                                lower, upper, len(samples), iters)
+                                "lower %d, upper %d, samples length %d, iters %d"
+                                % (lower, upper, len(samples), iters)
                             )
 
                     if MIXED_PREC:
                         self.scaler.unscale_(self.optimizer)
-                    clip_grad_norm_(self.policy.model.parameters(), self.gradient_clip_norm)
-                    clip_grad_norm_(self.policy.value_head.parameters(), self.gradient_clip_norm)
+                    clip_grad_norm_(
+                        self.policy.model.parameters(), self.gradient_clip_norm
+                    )
+                    clip_grad_norm_(
+                        self.policy.value_head.parameters(), self.gradient_clip_norm
+                    )
 
-#                     for p in self.policy.parameters():
-#                         p.grad.data.clamp_(min=-0.5, max=0.5)
-                    
+                    #                     for p in self.policy.parameters():
+                    #                         p.grad.data.clamp_(min=-0.5, max=0.5)
+
                     total_norm = 0
                     for p in self.policy.parameters():
                         if p.grad is not None:
@@ -272,30 +273,24 @@ class PPO(BaseAgent):
                         else:
                             print("param grad is none", p)
                     total_norm = total_norm ** (1.0 / 2)
+                    print("total_norm", total_norm)
                     if total_norm == total_norm:
                         self.update_means({"grad_norm": total_norm})
                     else:
                         print("encountered nan")
-                    self.metrics_dict["beta"] = self.beta
-                        
-                    if (kl_approx/iters) >= 0.4:
-                        print("ignoring batch", kl_approx/iters)
-                        self.set_lr(0)
+
                     if MIXED_PREC:
                         self.scaler.step(self.optimizer)
                         self.scaler.update()
                     else:
                         self.optimizer.step()
                     self.policy.reset_noise()
-                    self.set_lr(self.lr)
-                    
-                        
             self.memory.empty()
-    
+
     def set_lr(self, lr):
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
-            
+
     def _compute_loss(self, samples: Dict) -> torch.Tensor:
 
         state = samples["obs"]
@@ -310,7 +305,7 @@ class PPO(BaseAgent):
             .squeeze(-1)
             .to(self.device, non_blocking=True)
         )
-        
+
         probs = (
             torch.stack([record["action_prob"] for record in samples["data"]])
             .squeeze(-1)
@@ -322,62 +317,60 @@ class PPO(BaseAgent):
         if adv_mean == adv_mean:
             self.adv_mean = (
                 self.adv_mean * (1 - self.momentum) + adv_mean * (self.momentum)
-                if self.adv_mean is not None else
-                adv_mean
+                if self.adv_mean is not None
+                else adv_mean
             )
         if adv_std == adv_std:
             self.adv_std = (
                 self.adv_std * (1 - self.momentum) + adv_std * (self.momentum)
-                if self.adv_std is not None else
-                adv_std
+                if self.adv_std is not None
+                else adv_std
             )
-        advantages = ((advantages - self.adv_mean) / self.adv_std) if self.adv_std != 0 else 0
+        advantages = (
+            ((advantages - self.adv_mean) / self.adv_std) if self.adv_std != 0 else 0
+        )
 
         old_logprobs = torch.stack(
             [record["action_logprob"] for record in samples["data"]],
         ).to(self.device, non_blocking=True)
         outp = self.policy(state)
         action_dist_new, value_pred = outp["action_distribution"], outp["values"]
-#         with autocast() if MIXED_PREC else suppress():
-        if torch.isnan(value_pred).any():
-            print("value_pred")
-        if torch.isnan(values).any():
-            print("values")
-        value_loss = F.smooth_l1_loss(value_pred , values , reduction="none")
 
-        new_logprobs = action_dist_new.log_prob(action)
-        ratios = torch.exp(new_logprobs  - old_logprobs )
+        with autocast() if MIXED_PREC else suppress():
+            if torch.isnan(value_pred).any():
+                print("value_pred")
+            if torch.isnan(values).any():
+                print("values")
+            value_loss = F.smooth_l1_loss(value_pred, values, reduction="none")
 
-        kl_elem = (action_dist_new.probs * (torch.log(action_dist_new.probs) - torch.log(probs))).sum(dim=-1)
-        kl_approx = kl_elem.mean().item()
+            new_logprobs = action_dist_new.log_prob(action)
+            ratios = torch.exp(new_logprobs - old_logprobs)
 
-        if (kl_elem < 0).any():
-            print("KL Cant be < 0 !!")
-            print(kl_elem)
-            print(new_logprobs)
-            print(old_logprobs)
-            raise ValueError()
-#             ratios_clipped = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip)
-#             policy_gain = ratios * advantages 
-#             policy_gain_clipped = ratios_clipped * advantages 
-#             policy_loss = -torch.where(
-#                 torch.abs(policy_gain) < torch.abs(policy_gain_clipped), 
-#                 policy_gain, 
-#                 policy_gain_clipped
-#             )
-        policy_gain = ratios * advantages 
-        policy_loss = -policy_gain
-        
+            kl_elem = (
+                action_dist_new.probs
+                * (torch.log(action_dist_new.probs) - torch.log(probs))
+            ).sum(dim=-1)
+            kl_approx = kl_elem.mean().item()
+            print(kl_approx)
+            ratios_clipped = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip)
+            policy_gain = ratios * advantages
+            policy_gain_clipped = ratios_clipped * advantages
+            policy_loss = -torch.where(
+                torch.abs(policy_gain) < torch.abs(policy_gain_clipped),
+                policy_gain,
+                policy_gain_clipped,
+            )
+
         if any(policy_loss >= 100):
             print("Very big loss")
-#             print(policy_loss)
-            print(policy_gain)#, policy_gain_clipped)
+            #             print(policy_loss)
+            print(policy_gain)  # , policy_gain_clipped)
         if torch.isnan(new_logprobs).any():
             print("new_logprobs")
         if torch.isnan(advantages).any():
             print("advantages")
-#         if torch.isnan(policy_gain_clipped).any():
-#             print("policy_gain_clipped")
+        #         if torch.isnan(policy_gain_clipped).any():
+        #             print("policy_gain_clipped")
         if torch.isnan(policy_loss).any():
             print("policy_loss")
         self.update_means(
@@ -393,8 +386,7 @@ class PPO(BaseAgent):
             policy_loss
             + self.value_loss_coef * value_loss.squeeze()
             - self.entropy_reg_coef * action_dist_new.entropy().squeeze()
-            + self.beta * kl_elem.mean()
-        ), kl_approx
+        )
 
     def update_means(self, values: Dict[str, float]):
         for k, v in values.items():
@@ -441,7 +433,7 @@ class PPO(BaseAgent):
             dict: default parameters for the agent
         """
         return {
-            "beta": 100,
+            "beta": 1,
             "target_kl": 0.015,
             "lam": 0.95,
             "gamma": 0.99,
