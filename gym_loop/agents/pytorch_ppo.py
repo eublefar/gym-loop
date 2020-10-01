@@ -363,14 +363,11 @@ class PPO(BaseAgent):
 
         if any(policy_loss >= 100):
             print("Very big loss")
-            #             print(policy_loss)
-            print(policy_gain)  # , policy_gain_clipped)
+            print(policy_gain)
         if torch.isnan(new_logprobs).any():
             print("new_logprobs")
         if torch.isnan(advantages).any():
             print("advantages")
-        #         if torch.isnan(policy_gain_clipped).any():
-        #             print("policy_gain_clipped")
         if torch.isnan(policy_loss).any():
             print("policy_loss")
         self.update_means(
