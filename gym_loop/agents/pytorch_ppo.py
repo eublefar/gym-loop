@@ -10,6 +10,8 @@ from torch.distributions.categorical import Categorical
 from contextlib import suppress
 from collections import deque
 from math import exp
+import json
+import pprint
 
 try:
     from torch.cuda.amp import autocast, GradScaler
@@ -17,7 +19,7 @@ try:
     MIXED_PREC = True
 except ImportError:
     print("Mixed precision training is not available")
-    MIXED_PREC = False
+MIXED_PREC = False
 logging.basicConfig(level=logging.INFO)
 
 
@@ -64,6 +66,8 @@ class PPO(BaseAgent):
         self.entropy_sum = 0
         self.entropy_num = 0
 
+        self.pp = pprint.PrettyPrinter(4)
+
     def act(self, state: Any, episode_num: int, env_id: int = 0):
         """Retrieves agent's action upon state"""
         outp = self.policy(state)
@@ -90,6 +94,7 @@ class PPO(BaseAgent):
             else log_prob_override
         )
         self.last_actions_probs = action_distrs.probs.cpu()
+
         return actions.detach()
 
     def memorize(
@@ -220,16 +225,15 @@ class PPO(BaseAgent):
         """Called immediately after memorize"""
         if all(self.uploaded):
             print("All uploadedd")
+            self.memory.batch_size = self.batch_size
             self.uploaded = [False for i in range(self.n_envs)]
             for k in range(self.epochs):
                 for epoch_step, samples in enumerate(self.memory.sample_iterator()):
-                    print("epoch", epoch_step)
-                    iters = len(samples) // self.sub_batch_size + int(
-                        (len(samples) % self.sub_batch_size) != 0
+                    iters = len(samples["data"]) // self.sub_batch_size + int(
+                        (len(samples["data"]) % self.sub_batch_size) != 0
                     )
                     self.optimizer.zero_grad()
                     for i in range(iters):
-                        print("iter", i)
                         upper = (i + 1) * self.sub_batch_size
                         lower = i * self.sub_batch_size
                         try:
@@ -240,7 +244,6 @@ class PPO(BaseAgent):
                                 }
                             )
                             loss = torch.mean(elem_loss) / iters
-                            print(MIXED_PREC)
                             if MIXED_PREC:
                                 self.scaler.scale(loss).backward()
                             else:
@@ -250,8 +253,9 @@ class PPO(BaseAgent):
                             print(e)
                             print(
                                 "lower %d, upper %d, samples length %d, iters %d"
-                                % (lower, upper, len(samples), iters)
+                                % (lower, upper, len(samples["data"]), iters)
                             )
+                            raise e
 
                     if MIXED_PREC:
                         self.scaler.unscale_(self.optimizer)
@@ -307,9 +311,9 @@ class PPO(BaseAgent):
         )
 
         probs = (
-            torch.stack([record["action_prob"] for record in samples["data"]])
-            .squeeze(-1)
-            .to(self.device, non_blocking=True)
+            torch.stack([record["action_prob"] for record in samples["data"]]).to(
+                self.device, non_blocking=True
+            )
         ).detach()
 
         adv_mean = advantages.mean()
@@ -351,7 +355,10 @@ class PPO(BaseAgent):
                 * (torch.log(action_dist_new.probs) - torch.log(probs))
             ).sum(dim=-1)
             kl_approx = kl_elem.mean().item()
-            print(kl_approx)
+
+            if kl_approx > 5:
+                print("Large KLDIV = ", kl_approx)
+
             ratios_clipped = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip)
             policy_gain = ratios * advantages
             policy_gain_clipped = ratios_clipped * advantages

@@ -3,6 +3,7 @@ from typing import Dict, Tuple, Iterable
 from copy import deepcopy
 import gc
 
+
 class ReplayBuffer:
 
     """A simple numpy replay buffer."""
@@ -38,7 +39,7 @@ class ReplayBuffer:
         self.acts_buf[self.ptr] = act
         self.rews_buf[self.ptr] = rew
         self.done_buf[self.ptr] = done
-        self.data[self.ptr].update(data)
+        self.data[self.ptr] = data
         self.ptr = (self.ptr + 1) % self.max_size
         self.size = min(self.size + 1, self.max_size)
 
