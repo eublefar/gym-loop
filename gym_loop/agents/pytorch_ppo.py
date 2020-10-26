@@ -12,6 +12,8 @@ from collections import deque
 from math import exp
 import json
 import pprint
+import gc
+
 
 try:
     from torch.cuda.amp import autocast, GradScaler
@@ -19,7 +21,7 @@ try:
     MIXED_PREC = True
 except ImportError:
     print("Mixed precision training is not available")
-MIXED_PREC = False
+    MIXED_PREC = False
 logging.basicConfig(level=logging.INFO)
 
 
@@ -33,12 +35,12 @@ class PPO(BaseAgent):
             size=self.n_steps * self.n_envs * 2, batch_size=self.batch_size
         )
         self.optimizer = torch.optim.Adam(
-            self.policy.parameters(), lr=self.lr, eps=1e-8
+            self.policy.parameters(), lr=self.lr
         )
         self.buffers = [deque(maxlen=self.n_steps) for _ in range(self.n_envs)]
 
         if MIXED_PREC:
-            self.scaler = GradScaler()
+            self.scaler = GradScaler(enabled=True)
 
         self.last_values = [None] * self.n_envs
         self.last_action_logprobs = [None] * self.n_envs
@@ -133,11 +135,11 @@ class PPO(BaseAgent):
             self._upload_transitions(env_id)
 
     def batch_memorize(self, transition_batch):
-        if len(transition_batch) != self.n_envs:
-            raise RuntimeError(
-                "Batch size %d does not match number of envs %d"
-                % (len(transition_batch), self.n_envs)
-            )
+#         if len(transition_batch) != self.n_envs:
+#             raise RuntimeError(
+#                 "Batch size %d does not match number of envs %d"
+#                 % (len(transition_batch), self.n_envs)
+#             )
 
         if self.last_values_batch is None:
             raise RuntimeError("No value stored from previous action")
@@ -227,67 +229,65 @@ class PPO(BaseAgent):
             print("All uploadedd")
             self.memory.batch_size = self.batch_size
             self.uploaded = [False for i in range(self.n_envs)]
+            sub_batch_size = self.sub_batch_size
             for k in range(self.epochs):
                 for epoch_step, samples in enumerate(self.memory.sample_iterator()):
-                    iters = len(samples["data"]) // self.sub_batch_size + int(
-                        (len(samples["data"]) % self.sub_batch_size) != 0
-                    )
-                    self.optimizer.zero_grad()
-                    for i in range(iters):
-                        upper = (i + 1) * self.sub_batch_size
-                        lower = i * self.sub_batch_size
+                    run = True # to start first run
+                    while run:
+                        run = False
+                        exc=False
                         try:
-                            elem_loss = self._compute_loss(
-                                {
-                                    sample_key: sample[lower:upper]
-                                    for sample_key, sample in samples.items()
-                                }
+                            iters = len(samples["data"]) // sub_batch_size + int(
+                                (len(samples["data"]) % sub_batch_size) != 0
                             )
-                            loss = torch.mean(elem_loss) / iters
-                            if MIXED_PREC:
-                                self.scaler.scale(loss).backward()
-                            else:
-                                loss.backward()
-                            del loss, elem_loss
+                            for i in range(iters):
+                                upper = (i + 1) * sub_batch_size
+                                lower = i * sub_batch_size
+
+                                loss = self._compute_loss(
+                                    {
+                                        sample_key: sample[lower:upper]
+                                        for sample_key, sample in samples.items()
+                                    }, iters
+                                )
+                                if MIXED_PREC:
+                                    self.scaler.scale(loss).backward()
+                                else:
+                                    loss.backward()
+                                del loss
                         except RuntimeError as e:
-                            print(e)
-                            print(
-                                "lower %d, upper %d, samples length %d, iters %d"
-                                % (lower, upper, len(samples["data"]), iters)
-                            )
-                            raise e
+                            print("cuda in error: ", "CUDA" in str(e))
+                            print("reducing batch_size") 
+                            exc = True
+                            if "loss" in locals():
+                                del loss
+                            
+                        if exc:
+                            run = True
+                            if "loss" in locals():
+                                del loss
+                            torch.cuda.synchronize()
+                            self.optimizer.zero_grad()
+                            torch.cuda.empty_cache()
+                            
+                            torch.cuda.synchronize()
+                            self.optimizer.zero_grad()
+                            torch.cuda.empty_cache()
+                            
+                            sub_batch_size = sub_batch_size // 2
 
                     if MIXED_PREC:
                         self.scaler.unscale_(self.optimizer)
                     clip_grad_norm_(
-                        self.policy.model.parameters(), self.gradient_clip_norm
+                        self.policy.parameters(), self.gradient_clip_norm
                     )
-                    clip_grad_norm_(
-                        self.policy.value_head.parameters(), self.gradient_clip_norm
-                    )
-
-                    #                     for p in self.policy.parameters():
-                    #                         p.grad.data.clamp_(min=-0.5, max=0.5)
-
-                    total_norm = 0
-                    for p in self.policy.parameters():
-                        if p.grad is not None:
-                            param_norm = p.grad.data.norm(2).cpu()
-                            total_norm += param_norm.item() ** 2
-                        else:
-                            print("param grad is none", p)
-                    total_norm = total_norm ** (1.0 / 2)
-                    print("total_norm", total_norm)
-                    if total_norm == total_norm:
-                        self.update_means({"grad_norm": total_norm})
-                    else:
-                        print("encountered nan")
 
                     if MIXED_PREC:
                         self.scaler.step(self.optimizer)
                         self.scaler.update()
                     else:
-                        self.optimizer.step()
+                        self.optimizer.step()   
+                    self.optimizer.zero_grad()
                     self.policy.reset_noise()
             self.memory.empty()
 
@@ -295,79 +295,73 @@ class PPO(BaseAgent):
         for param_group in self.optimizer.param_groups:
             param_group["lr"] = lr
 
-    def _compute_loss(self, samples: Dict) -> torch.Tensor:
-
-        state = samples["obs"]
-        action = torch.stack(samples["acts"].tolist()).to(
-            self.device, non_blocking=True
-        )
-        values = torch.stack([record["value"] for record in samples["data"]]).to(
-            self.device, non_blocking=True
-        )
-        advantages = (
-            torch.stack([record["adv"] for record in samples["data"]])
-            .squeeze(-1)
-            .to(self.device, non_blocking=True)
-        )
-
-        probs = (
-            torch.stack([record["action_prob"] for record in samples["data"]]).to(
+    def _compute_loss(self, samples: Dict, norm_term: float) -> torch.Tensor:
+        with autocast() if MIXED_PREC else suppress():
+            state = samples["obs"]
+            action = torch.stack(samples["acts"].tolist()).to(
                 self.device, non_blocking=True
             )
-        ).detach()
-
-        adv_mean = advantages.mean()
-        adv_std = advantages.std()
-        if adv_mean == adv_mean:
-            self.adv_mean = (
-                self.adv_mean * (1 - self.momentum) + adv_mean * (self.momentum)
-                if self.adv_mean is not None
-                else adv_mean
+            values = torch.stack([record["value"] for record in samples["data"]]).to(
+                self.device, non_blocking=True
             )
-        if adv_std == adv_std:
-            self.adv_std = (
-                self.adv_std * (1 - self.momentum) + adv_std * (self.momentum)
-                if self.adv_std is not None
-                else adv_std
+            advantages = (
+                torch.stack([record["adv"] for record in samples["data"]])
+                .squeeze(-1)
+                .to(self.device, non_blocking=True)
             )
-        advantages = (
-            ((advantages - self.adv_mean) / self.adv_std) if self.adv_std != 0 else 0
-        )
 
-        old_logprobs = torch.stack(
-            [record["action_logprob"] for record in samples["data"]],
-        ).to(self.device, non_blocking=True)
-        outp = self.policy(state)
-        action_dist_new, value_pred = outp["action_distribution"], outp["values"]
+            adv_mean = advantages.mean()
+            adv_std = advantages.std()
+            if adv_mean == adv_mean:
+                self.adv_mean = (
+                    self.adv_mean * (1 - self.momentum) + adv_mean * (self.momentum)
+                    if self.adv_mean is not None
+                    else adv_mean
+                )
+            if adv_std == adv_std:
+                self.adv_std = (
+                    self.adv_std * (1 - self.momentum) + adv_std * (self.momentum)
+                    if self.adv_std is not None
+                    else adv_std
+                )
+            advantages = (
+                ((advantages - self.adv_mean) / self.adv_std) if self.adv_std != 0 else 0
+            )
+            
+            probs = (
+                torch.stack([record["action_prob"] for record in samples["data"]]).to(
+                    self.device, non_blocking=True
+                )
+            ).detach()
+            old_logprobs = torch.stack(
+                [record["action_logprob"] for record in samples["data"]],
+            ).to(self.device, non_blocking=True)
+            outp = self.policy(state)
+            action_dist_new, value_pred = outp["action_distribution"], outp["values"]
 
-        with autocast() if MIXED_PREC else suppress():
+        
             if torch.isnan(value_pred).any():
                 print("value_pred")
             if torch.isnan(values).any():
                 print("values")
             value_loss = F.smooth_l1_loss(value_pred, values, reduction="none")
-
             new_logprobs = action_dist_new.log_prob(action)
             ratios = torch.exp(new_logprobs - old_logprobs)
-
-            kl_elem = (
-                action_dist_new.probs
-                * (torch.log(action_dist_new.probs) - torch.log(probs))
-            ).sum(dim=-1)
-            kl_approx = kl_elem.mean().item()
-
-            if kl_approx > 5:
-                print("Large KLDIV = ", kl_approx)
 
             ratios_clipped = torch.clamp(ratios, 1 - self.eps_clip, 1 + self.eps_clip)
             policy_gain = ratios * advantages
             policy_gain_clipped = ratios_clipped * advantages
             policy_loss = -torch.where(
-                torch.abs(policy_gain) < torch.abs(policy_gain_clipped),
+            torch.abs(policy_gain) < torch.abs(policy_gain_clipped),
                 policy_gain,
                 policy_gain_clipped,
             )
-
+            total_loss = (
+                policy_loss
+                + self.value_loss_coef * value_loss.squeeze()
+                - self.entropy_reg_coef * action_dist_new.entropy().squeeze()
+            )
+            total_loss = torch.mean(total_loss) / norm_term
         if any(policy_loss >= 100):
             print("Very big loss")
             print(policy_gain)
@@ -379,18 +373,14 @@ class PPO(BaseAgent):
             print("policy_loss")
         self.update_means(
             {
-                "advantages": advantages.cpu().mean().detach().numpy(),
-                "policy_loss": policy_loss.cpu().mean().detach().numpy(),
-                "value_loss": value_loss.cpu().mean().detach().numpy(),
-                "values": value_pred.cpu().mean().detach().numpy(),
-                "entropy": action_dist_new.entropy().cpu().mean().detach().numpy(),
+                "advantages": advantages.detach().cpu().mean().numpy(),
+                "policy_loss": policy_loss.detach().cpu().mean().numpy(),
+                "value_loss": value_loss.detach().cpu().mean().numpy(),
+                "values": value_pred.detach().cpu().mean().numpy(),
+                "entropy": action_dist_new.entropy().detach().cpu().mean().numpy(),
             }
         )
-        return (
-            policy_loss
-            + self.value_loss_coef * value_loss.squeeze()
-            - self.entropy_reg_coef * action_dist_new.entropy().squeeze()
-        )
+        return total_loss
 
     def update_means(self, values: Dict[str, float]):
         for k, v in values.items():
