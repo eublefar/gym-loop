@@ -48,7 +48,7 @@ class PPO(BaseAgent):
         self.last_actions_logprobs = None
         self.adv_mean = None
         self.adv_std = None
-        self.momentum = 0.25
+        self.momentum = 1
         self.metrics_dict = {}
 
         self.uploaded = [False for i in range(self.n_envs)]
