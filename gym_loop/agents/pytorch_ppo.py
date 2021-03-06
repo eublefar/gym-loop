@@ -34,9 +34,7 @@ class PPO(BaseAgent):
         self.memory = ReplayBuffer(
             size=self.n_steps * self.n_envs * 2, batch_size=self.batch_size
         )
-        self.optimizer = torch.optim.Adam(
-            self.policy.parameters(), lr=self.lr
-        )
+        self.optimizer = torch.optim.Adam(self.policy.parameters(), lr=self.lr)
         self.buffers = [deque(maxlen=self.n_steps) for _ in range(self.n_envs)]
 
         if MIXED_PREC:
@@ -84,8 +82,8 @@ class PPO(BaseAgent):
         )
         return action.detach()
 
-    def batch_act(self, state_batch, mask, log_prob_override=None):
-        outp = self.policy(state_batch)
+    def batch_act(self, state_batch, mask, log_prob_override=None, step=None):
+        outp = self.policy(state_batch, step=step)
         action_distrs, values = outp["action_distribution"], outp["values"]
         actions = action_distrs.sample()
         self.last_values_batch = values.detach().cpu().pin_memory()
@@ -135,11 +133,11 @@ class PPO(BaseAgent):
             self._upload_transitions(env_id)
 
     def batch_memorize(self, transition_batch):
-#         if len(transition_batch) != self.n_envs:
-#             raise RuntimeError(
-#                 "Batch size %d does not match number of envs %d"
-#                 % (len(transition_batch), self.n_envs)
-#             )
+        #         if len(transition_batch) != self.n_envs:
+        #             raise RuntimeError(
+        #                 "Batch size %d does not match number of envs %d"
+        #                 % (len(transition_batch), self.n_envs)
+        #             )
 
         if self.last_values_batch is None:
             raise RuntimeError("No value stored from previous action")
@@ -232,10 +230,10 @@ class PPO(BaseAgent):
             sub_batch_size = self.sub_batch_size
             for k in range(self.epochs):
                 for epoch_step, samples in enumerate(self.memory.sample_iterator()):
-                    run = True # to start first run
+                    run = True  # to start first run
                     while run:
                         run = False
-                        exc=False
+                        exc = False
                         try:
                             iters = len(samples["data"]) // sub_batch_size + int(
                                 (len(samples["data"]) % sub_batch_size) != 0
@@ -248,7 +246,8 @@ class PPO(BaseAgent):
                                     {
                                         sample_key: sample[lower:upper]
                                         for sample_key, sample in samples.items()
-                                    }, iters
+                                    },
+                                    iters,
                                 )
                                 if MIXED_PREC:
                                     self.scaler.scale(loss).backward()
@@ -257,11 +256,11 @@ class PPO(BaseAgent):
                                 del loss
                         except RuntimeError as e:
                             print("cuda in error: ", "CUDA" in str(e))
-                            print("reducing batch_size") 
+                            print("reducing batch_size")
                             exc = True
                             if "loss" in locals():
                                 del loss
-                            
+
                         if exc:
                             run = True
                             if "loss" in locals():
@@ -269,24 +268,22 @@ class PPO(BaseAgent):
                             torch.cuda.synchronize()
                             self.optimizer.zero_grad()
                             torch.cuda.empty_cache()
-                            
+
                             torch.cuda.synchronize()
                             self.optimizer.zero_grad()
                             torch.cuda.empty_cache()
-                            
+
                             sub_batch_size = sub_batch_size // 2
 
                     if MIXED_PREC:
                         self.scaler.unscale_(self.optimizer)
-                    clip_grad_norm_(
-                        self.policy.parameters(), self.gradient_clip_norm
-                    )
+                    clip_grad_norm_(self.policy.parameters(), self.gradient_clip_norm)
 
                     if MIXED_PREC:
                         self.scaler.step(self.optimizer)
                         self.scaler.update()
                     else:
-                        self.optimizer.step()   
+                        self.optimizer.step()
                     self.optimizer.zero_grad()
                     self.policy.reset_noise()
             self.memory.empty()
@@ -325,9 +322,11 @@ class PPO(BaseAgent):
                     else adv_std
                 )
             advantages = (
-                ((advantages - self.adv_mean) / self.adv_std) if self.adv_std != 0 else 0
+                ((advantages - self.adv_mean) / self.adv_std)
+                if self.adv_std != 0
+                else 0
             )
-            
+
             probs = (
                 torch.stack([record["action_prob"] for record in samples["data"]]).to(
                     self.device, non_blocking=True
@@ -339,7 +338,6 @@ class PPO(BaseAgent):
             outp = self.policy(state)
             action_dist_new, value_pred = outp["action_distribution"], outp["values"]
 
-        
             if torch.isnan(value_pred).any():
                 print("value_pred")
             if torch.isnan(values).any():
@@ -352,7 +350,7 @@ class PPO(BaseAgent):
             policy_gain = ratios * advantages
             policy_gain_clipped = ratios_clipped * advantages
             policy_loss = -torch.where(
-            torch.abs(policy_gain) < torch.abs(policy_gain_clipped),
+                torch.abs(policy_gain) < torch.abs(policy_gain_clipped),
                 policy_gain,
                 policy_gain_clipped,
             )
